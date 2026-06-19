@@ -662,6 +662,10 @@ function AdminContent() {
   const [savingShiftEnd, setSavingShiftEnd] = useState(false);
   const [savingAbsentAlertTime, setSavingAbsentAlertTime] = useState(false);
 
+  // Settings state — Timezone
+  const [timezone, setTimezone] = useState("Asia/Karachi");
+  const [savingTimezone, setSavingTimezone] = useState(false);
+
   // Reports state
   const [reportTechId, setReportTechId] = useState("");
   const [reportFrom, setReportFrom] = useState(() => {
@@ -945,6 +949,7 @@ function AdminContent() {
         setSavingSocialYoutube(false); setSavingSocialWebsite(false);
         setSavingReferralEnabled(false); setSavingReferralPoints(false); setSavingReferralMoney(false);
         setSavingCheckinDeadline(false); setSavingShiftEnd(false); setSavingAbsentAlertTime(false);
+        setSavingTimezone(false);
         refetchSettings();
         Alert.alert("Saved", "Setting updated successfully.");
       },
@@ -958,6 +963,7 @@ function AdminContent() {
         setSavingSocialYoutube(false); setSavingSocialWebsite(false);
         setSavingReferralEnabled(false); setSavingReferralPoints(false); setSavingReferralMoney(false);
         setSavingCheckinDeadline(false); setSavingShiftEnd(false); setSavingAbsentAlertTime(false);
+        setSavingTimezone(false);
         Alert.alert("Error", "Could not update setting");
       },
     },
@@ -1147,6 +1153,7 @@ function AdminContent() {
       setCheckinDeadline(settingsData.find((s) => s.key === "attendance_checkin_deadline")?.value ?? "08:00");
       setShiftEnd(settingsData.find((s) => s.key === "attendance_shift_end")?.value ?? "18:00");
       setAbsentAlertTime(settingsData.find((s) => s.key === "attendance_absent_alert_time")?.value ?? "09:00");
+      setTimezone(settingsData.find((s) => s.key === "timezone")?.value ?? "Asia/Karachi");
     }
   }, [settingsData]);
 
@@ -3698,6 +3705,60 @@ function AdminContent() {
               </View>
             </View>
           ))}
+
+          {/* Timezone */}
+          <Text style={[styles.settingsSection, { color: "#0891B2", marginTop: 8 }]}>Timezone</Text>
+          <Text style={[styles.settingsHint, { color: colors.mutedForeground }]}>
+            Timezone used for attendance calculations (late/on-time, overtime, absent alert). Default: Asia/Karachi (PKT UTC+5).
+          </Text>
+          <View style={[styles.settingCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.settingIconWrap, { backgroundColor: "#0891B218" }]}>
+              <Feather name="globe" size={18} color="#0891B2" />
+            </View>
+            <View style={{ flex: 1, gap: 8 }}>
+              <Text style={[styles.settingLabel, { color: colors.foreground }]}>App Timezone</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 2 }}>
+                {([
+                  { label: "Pakistan (UTC+5)", value: "Asia/Karachi" },
+                  { label: "UAE (UTC+4)", value: "Asia/Dubai" },
+                  { label: "Saudi Arabia (UTC+3)", value: "Asia/Riyadh" },
+                  { label: "India (UTC+5:30)", value: "Asia/Kolkata" },
+                  { label: "UTC (UTC+0)", value: "UTC" },
+                ] as const).map((tz) => (
+                  <TouchableOpacity
+                    key={tz.value}
+                    style={[
+                      styles.techPill,
+                      {
+                        backgroundColor: timezone === tz.value ? "#0891B2" : colors.muted,
+                        borderColor: timezone === tz.value ? "#0891B2" : colors.border,
+                      },
+                    ]}
+                    onPress={() => { hapticSelection(); setTimezone(tz.value); }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.techPillText, { color: timezone === tz.value ? "#FFFFFF" : colors.foreground }]}>
+                      {tz.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <TouchableOpacity
+                style={[styles.saveBtn, { backgroundColor: savingTimezone ? colors.mutedForeground : "#0891B2" }]}
+                onPress={() => {
+                  setSavingTimezone(true);
+                  updateSetting({ key: "timezone", data: { value: timezone } });
+                }}
+                disabled={savingTimezone}
+                activeOpacity={0.85}
+              >
+                {savingTimezone
+                  ? <ActivityIndicator size="small" color="#FFFFFF" />
+                  : <><Feather name="save" size={15} color="#FFFFFF" /><Text style={styles.saveBtnText}>Save Timezone</Text></>
+                }
+              </TouchableOpacity>
+            </View>
+          </View>
 
           {/* Admin Password Change */}
           <Text style={[styles.settingsSection, { color: "#EF4444", marginTop: 8 }]}>Admin Password</Text>

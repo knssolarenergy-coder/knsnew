@@ -11,34 +11,69 @@ const router = Router();
 interface AttendanceSettings {
   deadlineHHMM: string;
   shiftEndHHMM: string;
+  timezone: string;
 }
 
 async function getAttendanceSettings(): Promise<AttendanceSettings> {
   const rows = await db.select().from(settings)
-    .where(inArray(settings.key, ["attendance_checkin_deadline", "attendance_shift_end"]));
+    .where(inArray(settings.key, ["attendance_checkin_deadline", "attendance_shift_end", "timezone"]));
   const get = (key: string, def: string) => rows.find(r => r.key === key)?.value ?? def;
   return {
     deadlineHHMM: get("attendance_checkin_deadline", "08:00"),
     shiftEndHHMM: get("attendance_shift_end", "18:00"),
+    timezone: get("timezone", "Asia/Karachi"),
   };
 }
 
-// Server runs in UTC; Pakistan is UTC+5
-const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
-function toPKTMins(d: Date): number {
-  const pkt = new Date(d.getTime() + PKT_OFFSET_MS);
-  return pkt.getUTCHours() * 60 + pkt.getUTCMinutes();
+// Convert a UTC Date to minutes-since-midnight in the configured timezone using Intl API
+function toLocalMins(d: Date, timezone: string): number {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(d);
+    let h = parseInt(parts.find(p => p.type === "hour")?.value ?? "0", 10);
+    const m = parseInt(parts.find(p => p.type === "minute")?.value ?? "0", 10);
+    if (h === 24) h = 0; // Intl may return 24 for midnight
+    return h * 60 + m;
+  } catch {
+    // Fallback: UTC+5 (Asia/Karachi)
+    const pkt = new Date(d.getTime() + 5 * 60 * 60 * 1000);
+    return pkt.getUTCHours() * 60 + pkt.getUTCMinutes();
+  }
+}
+
+// Return local HHMM string in the configured timezone
+function toLocalHHMM(d: Date, timezone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(d);
+    let h = parseInt(parts.find(p => p.type === "hour")?.value ?? "0", 10);
+    const m = parseInt(parts.find(p => p.type === "minute")?.value ?? "0", 10);
+    if (h === 24) h = 0;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  } catch {
+    const pkt = new Date(d.getTime() + 5 * 60 * 60 * 1000);
+    return `${String(pkt.getUTCHours()).padStart(2, "0")}:${String(pkt.getUTCMinutes()).padStart(2, "0")}`;
+  }
 }
 
 function calcStats(
   checkIn: Date,
   checkOut: Date | null,
   deadlineHHMM: string,
-  shiftEndHHMM: string
+  shiftEndHHMM: string,
+  timezone: string
 ) {
   const [dlH = 8, dlM = 0] = deadlineHHMM.split(":").map(Number);
   const deadlineMins = dlH * 60 + dlM;
-  const checkInMins = toPKTMins(checkIn);
+  const checkInMins = toLocalMins(checkIn, timezone);
   const isLate = checkInMins > deadlineMins;
 
   let totalHours: number | null = null;
@@ -47,7 +82,7 @@ function calcStats(
     totalHours = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60);
     const [seH = 18, seM = 0] = shiftEndHHMM.split(":").map(Number);
     const shiftEndMins = seH * 60 + seM;
-    const checkOutMins = toPKTMins(checkOut);
+    const checkOutMins = toLocalMins(checkOut, timezone);
     overtimeHours = Math.max(0, (checkOutMins - shiftEndMins) / 60);
   }
   return { isLate, totalHours, overtimeHours };
@@ -64,7 +99,8 @@ async function formatRecord(row: typeof attendance.$inferSelect, attSettings: At
     row.checkInAt,
     row.checkOutAt ?? null,
     attSettings.deadlineHHMM,
-    attSettings.shiftEndHHMM
+    attSettings.shiftEndHHMM,
+    attSettings.timezone
   );
   return {
     id: row.id,
@@ -277,11 +313,13 @@ router.get("/attendance/today", requireTechnician, async (req, res) => {
 
 // GET /attendance/absent-today — admin: technicians who have not checked in today (gated by alert time)
 router.get("/attendance/absent-today", requireAdmin, async (req, res) => {
-  // Only return absent list after the configured alert time
-  const [alertRow] = await db.select().from(settings).where(eq(settings.key, "attendance_absent_alert_time"));
-  const alertTime = alertRow?.value ?? "09:00";
+  // Only return absent list after the configured alert time (in configured timezone)
+  const settingRows = await db.select().from(settings)
+    .where(inArray(settings.key, ["attendance_absent_alert_time", "timezone"]));
+  const alertTime = settingRows.find(r => r.key === "attendance_absent_alert_time")?.value ?? "09:00";
+  const timezone = settingRows.find(r => r.key === "timezone")?.value ?? "Asia/Karachi";
   const now = new Date();
-  const currentHHMM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const currentHHMM = toLocalHHMM(now, timezone);
   if (currentHHMM < alertTime) {
     res.json([]);
     return;

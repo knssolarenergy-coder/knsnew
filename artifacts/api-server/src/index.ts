@@ -75,6 +75,7 @@ async function seedSettings() {
     { key: "attendance_checkin_deadline", value: "08:00" },
     { key: "attendance_shift_end", value: "18:00" },
     { key: "attendance_absent_alert_time", value: "09:00" },
+    { key: "timezone", value: "Asia/Karachi" },
   ];
   try {
     for (const row of defaults) {
@@ -92,14 +93,38 @@ function scheduleAbsentAlert() {
   cron.schedule("* * * * *", async () => {
     try {
       const now = new Date();
-      const todayKey = now.toISOString().split("T")[0] as string;
-      if (lastAlertDay === todayKey) return;
 
-      const currentHHMM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      // Read timezone setting (default Asia/Karachi)
+      const [tzRow] = await db.select().from(settings).where(eq(settings.key, "timezone"));
+      const timezone = tzRow?.value ?? "Asia/Karachi";
+
+      // Get current local time in configured timezone for comparison
+      let localHHMM: string;
+      try {
+        const parts = new Intl.DateTimeFormat("en-US", {
+          timeZone: timezone, hour: "2-digit", minute: "2-digit", hour12: false,
+        }).formatToParts(now);
+        let h = parseInt(parts.find(p => p.type === "hour")?.value ?? "0", 10);
+        const m = parseInt(parts.find(p => p.type === "minute")?.value ?? "0", 10);
+        if (h === 24) h = 0;
+        localHHMM = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      } catch {
+        localHHMM = `${String(now.getUTCHours() + 5).padStart(2, "0")}:${String(now.getUTCMinutes()).padStart(2, "0")}`;
+      }
+
+      // Use local date as day key (YYYY-MM-DD in configured timezone)
+      let todayKey: string;
+      try {
+        todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+      } catch {
+        todayKey = now.toISOString().split("T")[0] as string;
+      }
+
+      if (lastAlertDay === todayKey) return;
 
       const [alertRow] = await db.select().from(settings).where(eq(settings.key, "attendance_absent_alert_time"));
       const alertTime = alertRow?.value ?? "09:00";
-      if (currentHHMM < alertTime) return;
+      if (localHHMM < alertTime) return;
 
       lastAlertDay = todayKey;
 
