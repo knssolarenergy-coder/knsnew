@@ -164,4 +164,5 @@ overrides:
   shell-quote: "file:./packages/shell-quote"
 
 allowBuilds:
+  dtrace-provider: set this to true or false
   esbuild: true
