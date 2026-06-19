@@ -72,6 +72,7 @@ autoInstallPeers: false
 
 onlyBuiltDependencies:
   - '@swc/core'
+  - dtrace-provider
   - esbuild
   - msw
   - unrs-resolver
@@ -164,5 +165,5 @@ overrides:
   shell-quote: "file:./packages/shell-quote"
 
 allowBuilds:
-  dtrace-provider: set this to true or false
+  dtrace-provider: true
   esbuild: true
