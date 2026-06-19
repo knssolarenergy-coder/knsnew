@@ -4,7 +4,7 @@ modules = ["nodejs-24", "python-3.11", "postgresql-16"]
 router = "application"
 deploymentTarget = "autoscale"
 run = ["bash", "-c", "NODE_ENV=production node --enable-source-maps artifacts/api-server/dist/index.mjs"]
-build = ["bash", "-c", "CI=true pnpm install --frozen-lockfile && node artifacts/api-server/build.mjs"]
+build = ["bash", "-c", "node artifacts/api-server/build.mjs"]
 
 [deployment.postBuild]
 args = ["pnpm", "store", "prune"]
