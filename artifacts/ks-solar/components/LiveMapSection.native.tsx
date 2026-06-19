@@ -298,18 +298,6 @@ export function LiveMapSection() {
         </View>
       )}
 
-      {/* ── Satellite / Street toggle ── */}
-      <TouchableOpacity
-        style={[s.styleToggle, { backgroundColor: isSatellite ? "rgba(15,23,42,0.82)" : "rgba(255,255,255,0.92)" }]}
-        onPress={() => setIsSatellite((v) => !v)}
-        activeOpacity={0.85}
-      >
-        <Feather name={isSatellite ? "map" : "layers"} size={14} color={isSatellite ? "#ffffff" : "#0F172A"} />
-        <Text style={[s.styleToggleText, { color: isSatellite ? "#ffffff" : "#0F172A" }]}>
-          {isSatellite ? "Street" : "Satellite"}
-        </Text>
-      </TouchableOpacity>
-
       {/* ── Top overlays ── */}
       <View style={s.topOverlay} pointerEvents="none">
         {locs.length > 0 && (
@@ -336,6 +324,18 @@ export function LiveMapSection() {
           </View>
         </View>
       )}
+
+      {/* ── Satellite / Street toggle (rendered last so it stays on top of all overlays) ── */}
+      <TouchableOpacity
+        style={[s.styleToggle, { backgroundColor: isSatellite ? "rgba(15,23,42,0.82)" : "rgba(255,255,255,0.92)" }]}
+        onPress={() => setIsSatellite((v) => !v)}
+        activeOpacity={0.85}
+      >
+        <Feather name={isSatellite ? "map" : "layers"} size={14} color={isSatellite ? "#ffffff" : "#0F172A"} />
+        <Text style={[s.styleToggleText, { color: isSatellite ? "#ffffff" : "#0F172A" }]}>
+          {isSatellite ? "Street" : "Satellite"}
+        </Text>
+      </TouchableOpacity>
 
       {/* ── Bottom: tech card strip ── */}
       {!selectedTechId && locs.length > 0 && (

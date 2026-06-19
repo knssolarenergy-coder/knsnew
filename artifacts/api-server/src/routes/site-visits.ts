@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { db, siteVisits, users } from "@workspace/db";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
-import { notifyTechnician } from "../lib/notifications.js";
+import { notifyAdmins, notifyTechnician, siteVisitEmailHtml, adminNewSiteVisitEmailHtml } from "../lib/notifications.js";
 
 const router = Router();
 
@@ -66,11 +66,20 @@ router.post("/site-visits", requireAdmin, async (req, res) => {
     const [result] = await withTechnicianName([row]);
     req.log.info({ id: row.id }, "Site visit created");
     res.status(201).json(result);
+    notifyAdmins({
+      pushTitle: "New Site Visit 📍",
+      pushBody: `${row.customerName} — ${row.purpose}`,
+      pushData: { type: "site_visit_created", id: row.id },
+      emailSubject: `New Site Visit: ${row.customerName}`,
+      emailHtml: adminNewSiteVisitEmailHtml(row.customerName, row.phone, row.purpose, row.address, row.scheduledDate, row.scheduledTime),
+    }).catch(() => {});
     if (row.assignedTo) {
       notifyTechnician(row.assignedTo, {
         pushTitle: "Site Visit Assigned 📍",
         pushBody: `${row.purpose} — ${row.customerName}${row.scheduledDate ? ` on ${row.scheduledDate}` : ""}`,
         pushData: { type: "site_visit_assigned", id: row.id },
+        emailSubject: `Site Visit Assigned — ${row.customerName}`,
+        emailHtml: (techName) => siteVisitEmailHtml(techName, row.customerName, row.purpose, row.address, row.scheduledDate, row.scheduledTime),
       }).catch(() => {});
     }
   } catch (err) {
@@ -125,6 +134,8 @@ router.patch("/site-visits/:id", requireAuth, async (req, res) => {
         pushTitle: "Site Visit Assigned 📍",
         pushBody: `${updated.purpose} — ${updated.customerName}${updated.scheduledDate ? ` on ${updated.scheduledDate}` : ""}`,
         pushData: { type: "site_visit_assigned", id: updated.id },
+        emailSubject: `Site Visit Assigned — ${updated.customerName}`,
+        emailHtml: (techName) => siteVisitEmailHtml(techName, updated.customerName, updated.purpose, updated.address, updated.scheduledDate, updated.scheduledTime),
       }).catch(() => {});
     }
   } catch (err) {

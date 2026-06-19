@@ -23,6 +23,13 @@ async function getAttendanceSettings(): Promise<AttendanceSettings> {
   };
 }
 
+// Server runs in UTC; Pakistan is UTC+5
+const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
+function toPKTMins(d: Date): number {
+  const pkt = new Date(d.getTime() + PKT_OFFSET_MS);
+  return pkt.getUTCHours() * 60 + pkt.getUTCMinutes();
+}
+
 function calcStats(
   checkIn: Date,
   checkOut: Date | null,
@@ -31,7 +38,7 @@ function calcStats(
 ) {
   const [dlH = 8, dlM = 0] = deadlineHHMM.split(":").map(Number);
   const deadlineMins = dlH * 60 + dlM;
-  const checkInMins = checkIn.getHours() * 60 + checkIn.getMinutes();
+  const checkInMins = toPKTMins(checkIn);
   const isLate = checkInMins > deadlineMins;
 
   let totalHours: number | null = null;
@@ -40,7 +47,7 @@ function calcStats(
     totalHours = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60);
     const [seH = 18, seM = 0] = shiftEndHHMM.split(":").map(Number);
     const shiftEndMins = seH * 60 + seM;
-    const checkOutMins = checkOut.getHours() * 60 + checkOut.getMinutes();
+    const checkOutMins = toPKTMins(checkOut);
     overtimeHours = Math.max(0, (checkOutMins - shiftEndMins) / 60);
   }
   return { isLate, totalHours, overtimeHours };

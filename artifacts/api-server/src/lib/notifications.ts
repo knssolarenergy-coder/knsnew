@@ -286,6 +286,52 @@ export function adminNewComplaintEmailHtml(
   return emailLayout("New Complaint Alert", body);
 }
 
+export function siteVisitEmailHtml(
+  techName: string,
+  customerName: string,
+  purpose: string,
+  address: string,
+  scheduledDate?: string | null,
+  scheduledTime?: string | null
+): string {
+  const body = `
+    <h2 style="color:#1E3A5F;margin:0 0 12px;font-size:18px;">Site Visit Assigned 📍</h2>
+    <p style="color:#555;font-size:14px;line-height:1.6;margin:0 0 8px;">Hello <strong>${techName}</strong>,</p>
+    <p style="color:#555;font-size:14px;line-height:1.6;margin:0 0 16px;">A site visit has been assigned to you. Please review the details below.</p>
+    <table width="100%" style="background:#f8fafc;border-radius:10px;margin:0 0 16px;border-collapse:collapse;">
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">👤 Customer: <strong>${customerName}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">🔧 Purpose: <strong>${purpose}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;${scheduledDate || scheduledTime ? "border-bottom:1px solid #eee;" : ""}">📍 Address: <strong>${address}</strong></td></tr>
+      ${scheduledDate ? `<tr><td style="padding:8px 14px;font-size:13px;color:#555;${scheduledTime ? "border-bottom:1px solid #eee;" : ""}">📅 Date: <strong>${scheduledDate}</strong></td></tr>` : ""}
+      ${scheduledTime ? `<tr><td style="padding:8px 14px;font-size:13px;color:#555;">🕐 Time: <strong>${scheduledTime}</strong></td></tr>` : ""}
+    </table>
+    <p style="color:#888;font-size:13px;margin:0;">Please open the K&amp;S Solar app to view more details and update the status.</p>`;
+  return emailLayout("Site Visit Assignment", body);
+}
+
+export function adminNewSiteVisitEmailHtml(
+  customerName: string,
+  phone: string,
+  purpose: string,
+  address: string,
+  scheduledDate?: string | null,
+  scheduledTime?: string | null
+): string {
+  const body = `
+    <h2 style="color:#1E3A5F;margin:0 0 12px;font-size:18px;">New Site Visit Request 📍</h2>
+    <p style="color:#555;font-size:14px;line-height:1.6;margin:0 0 16px;">A new site visit has been created.</p>
+    <table width="100%" style="background:#f8fafc;border-radius:10px;margin:0 0 16px;border-collapse:collapse;">
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">👤 Customer: <strong>${customerName}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">📞 Phone: <strong>${phone}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">🔧 Purpose: <strong>${purpose}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;${scheduledDate || scheduledTime ? "border-bottom:1px solid #eee;" : ""}">📍 Address: <strong>${address}</strong></td></tr>
+      ${scheduledDate ? `<tr><td style="padding:8px 14px;font-size:13px;color:#555;${scheduledTime ? "border-bottom:1px solid #eee;" : ""}">📅 Date: <strong>${scheduledDate}</strong></td></tr>` : ""}
+      ${scheduledTime ? `<tr><td style="padding:8px 14px;font-size:13px;color:#555;">🕐 Time: <strong>${scheduledTime}</strong></td></tr>` : ""}
+    </table>
+    <p style="color:#888;font-size:13px;margin:0;">Log in to the admin panel to assign a technician.</p>`;
+  return emailLayout("New Site Visit Alert", body);
+}
+
 export function complaintEmailHtml(name: string, subject: string, status: string): string {
   const label = COMPLAINT_STATUS_LABELS[status] ?? status;
   const isNew = status === "submitted";
