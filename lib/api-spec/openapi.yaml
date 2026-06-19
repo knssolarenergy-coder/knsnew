@@ -1762,7 +1762,7 @@ paths:
                 $ref: '#/components/schemas/SiteVisit'
 
   /site-visits/{id}/technicians:
-    patch:
+    put:
       operationId: assignSiteVisitTechnicians
       tags: [siteVisits]
       summary: Assign multiple technicians to a site visit (admin only)

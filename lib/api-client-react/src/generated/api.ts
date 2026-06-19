@@ -5666,7 +5666,7 @@ export const assignSiteVisitTechnicians = async (id: string,
   return customFetch<SiteVisit>(getAssignSiteVisitTechniciansUrl(id),
   {
     ...options,
-    method: 'PATCH',
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(assignTechniciansRequest)
   }

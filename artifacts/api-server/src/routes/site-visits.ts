@@ -202,8 +202,8 @@ router.patch("/site-visits/:id", requireAuth, async (req, res) => {
   }
 });
 
-// PATCH /site-visits/:id/technicians — assign multiple technicians (admin only)
-router.patch("/site-visits/:id/technicians", requireAdmin, async (req, res) => {
+// PUT /site-visits/:id/technicians — assign multiple technicians (admin only)
+router.put("/site-visits/:id/technicians", requireAdmin, async (req, res) => {
   try {
     const { technicianIds } = req.body;
     if (!Array.isArray(technicianIds)) {
