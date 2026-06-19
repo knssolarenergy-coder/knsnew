@@ -125,7 +125,6 @@ export default function TechnicianScreen() {
 
   // Attendance state
   const [checkInLoading, setCheckInLoading] = useState(false);
-  const [locationBlocked, setLocationBlocked] = useState(false);
   const [checkOutLoading, setCheckOutLoading] = useState(false);
   const [selfieUri, setSelfieUri] = useState<string | null>(null);
   const [sitePhotoUri, setSitePhotoUri] = useState<string | null>(null);
@@ -284,45 +283,7 @@ export default function TechnicianScreen() {
     }
   }, [todayRecord?.id, todayRecord?.checkOutAt]);
 
-  // Enforce location stays ON while checked in.
-  // Strategy: poll every 3 s + immediately check on every foreground transition.
-  // This catches the case where the user turns GPS off while the app is open
-  // AND when they come back to the app after doing so from settings.
-  // Note: we CANNOT prevent the OS from letting users turn GPS off — but we
-  // show a blocking overlay the instant we detect it so they must re-enable.
-  useEffect(() => {
-    if (Platform.OS === "web") return;
-    if (!todayRecord || todayRecord.checkOutAt) {
-      setLocationBlocked(false);
-      return;
-    }
-    let cancelled = false;
-    async function checkLocation() {
-      try {
-        const enabled = await Location.hasServicesEnabledAsync();
-        const { status } = await Location.getForegroundPermissionsAsync();
-        if (cancelled) return;
-        setLocationBlocked(!enabled || status !== "granted");
-      } catch { }
-    }
-    // Immediate check
-    checkLocation();
-    // Poll every 3 s (faster than before — catches GPS-off quicker)
-    const watchId = setInterval(checkLocation, 3000);
-    // Also check immediately whenever app comes to foreground — this is the key
-    // fix for "app was closed / put in background while GPS was turned off".
-    const appStateSub = AppState.addEventListener("change", (nextState) => {
-      if (nextState === "active") {
-        checkLocation();
-      }
-    });
-    return () => {
-      cancelled = true;
-      clearInterval(watchId);
-      appStateSub.remove();
-      setLocationBlocked(false);
-    };
-  }, [todayRecord?.id, todayRecord?.checkOutAt]);
+  // Location enforcement is now handled app-wide by LocationEnforcementOverlay in _layout.tsx
 
   function changeBookingStatus(id: string, status: string) {
     const label = status === "in_progress" ? "In Progress" : "Completed";
@@ -1213,36 +1174,6 @@ export default function TechnicianScreen() {
         </View>
       </ScrollView>
 
-      {/* Full-screen location block — shown when technician is checked in but
-          location services / permission is off. Modal covers tab bar too. */}
-      <Modal
-        visible={locationBlocked}
-        animationType="fade"
-        transparent={false}
-        statusBarTranslucent
-      >
-        <View style={{ flex: 1, backgroundColor: "#FFFFFF", justifyContent: "center", alignItems: "center", padding: 32 }}>
-          <View style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: "#FEE2E2", justifyContent: "center", alignItems: "center", marginBottom: 28 }}>
-            <Feather name="lock" size={40} color="#EF4444" />
-          </View>
-          <Text style={{ fontSize: 24, fontFamily: "Inter_700Bold", color: "#1E293B", textAlign: "center", marginBottom: 12 }}>
-            Location Band Hai!
-          </Text>
-          <Text style={{ fontSize: 15, fontFamily: "Inter_400Regular", color: "#64748B", textAlign: "center", lineHeight: 24, marginBottom: 36 }}>
-            {"Aap check-in ke doran location off nahi kar sakte.\n\nCheck-out karne tak location ON rakhna zaroori hai — warna aapki tracking ruk jaati hai."}
-          </Text>
-          <TouchableOpacity
-            onPress={() => Linking.openSettings()}
-            style={{ backgroundColor: "#0C4A6E", borderRadius: 14, paddingVertical: 16, width: "100%", alignItems: "center" }}
-            activeOpacity={0.85}
-          >
-            <Text style={{ color: "#FFFFFF", fontSize: 16, fontFamily: "Inter_700Bold" }}>Settings Mein Jayen</Text>
-          </TouchableOpacity>
-          <Text style={{ fontSize: 12, color: "#94A3B8", textAlign: "center", marginTop: 20, fontFamily: "Inter_400Regular" }}>
-            Location on karte hi yeh screen khud band ho jaegi
-          </Text>
-        </View>
-      </Modal>
 
     </View>
   );

@@ -17,6 +17,7 @@ import { Platform } from "react-native";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ConfirmProvider } from "@/components/ConfirmModal";
+import { LocationEnforcementOverlay } from "@/components/LocationEnforcementOverlay";
 import { registerForPushNotificationsAsync } from "@/hooks/usePushNotifications";
 import { useRouter } from "expo-router";
 // Register background location task at app startup — wrapped in try/catch so any
@@ -127,6 +128,7 @@ export default function RootLayout() {
                 <ConfirmProvider>
                   <PushManager />
                   <NotificationObserver />
+                  <LocationEnforcementOverlay />
                   <Stack screenOptions={{ headerShown: false }}>
                     <Stack.Screen name="(tabs)" />
                     <Stack.Screen name="(auth)" />
