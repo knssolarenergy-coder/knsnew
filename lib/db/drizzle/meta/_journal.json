@@ -57,6 +57,13 @@
       "when": 1781250941060,
       "tag": "0007_large_fat_cobra",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1781878445359,
+      "tag": "0008_flashy_psynapse",
+      "breakpoints": true
     }
   ]
 }
