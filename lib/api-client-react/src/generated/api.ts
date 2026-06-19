@@ -1361,7 +1361,7 @@ export const assignComplaintTechnicians = async (id: string,
   return customFetch<Complaint>(getAssignComplaintTechniciansUrl(id),
   {
     ...options,
-    method: 'PUT',
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(assignTechniciansRequest)
   }
@@ -5666,7 +5666,7 @@ export const assignSiteVisitTechnicians = async (id: string,
   return customFetch<SiteVisit>(getAssignSiteVisitTechniciansUrl(id),
   {
     ...options,
-    method: 'PUT',
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(assignTechniciansRequest)
   }

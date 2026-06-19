@@ -169,6 +169,20 @@ router.patch("/site-visits/:id", requireAuth, async (req, res) => {
 
     const prevAssignedTo = existing.assignedTo;
     const [updated] = await db.update(siteVisits).set(updates).where(eq(siteVisits.id, id)).returning();
+
+    // Sync join table when assignedTo is being changed via legacy field
+    if (assignedTo !== undefined) {
+      const newAssignedTo = updated.assignedTo;
+      await db.delete(siteVisitTechnicians).where(eq(siteVisitTechnicians.siteVisitId, updated.id));
+      if (newAssignedTo) {
+        await db.insert(siteVisitTechnicians).values({
+          id: generateId(),
+          siteVisitId: updated.id,
+          technicianId: newAssignedTo,
+        });
+      }
+    }
+
     const [result] = await withTechnicianData([updated]);
     req.log.info({ id }, "Site visit updated");
     res.json(result);
@@ -188,8 +202,8 @@ router.patch("/site-visits/:id", requireAuth, async (req, res) => {
   }
 });
 
-// PUT /site-visits/:id/technicians — assign multiple technicians (admin only)
-router.put("/site-visits/:id/technicians", requireAdmin, async (req, res) => {
+// PATCH /site-visits/:id/technicians — assign multiple technicians (admin only)
+router.patch("/site-visits/:id/technicians", requireAdmin, async (req, res) => {
   try {
     const { technicianIds } = req.body;
     if (!Array.isArray(technicianIds)) {

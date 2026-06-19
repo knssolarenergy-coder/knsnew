@@ -310,6 +310,19 @@ router.patch("/complaints/:id", requireAuth, async (req, res) => {
       .where(eq(complaints.id, String(req.params.id)))
       .returning();
 
+    // Sync join table when technicianId is being changed via legacy field
+    if (technicianId !== undefined) {
+      const newTechId = updated.technicianId;
+      await db.delete(complaintTechnicians).where(eq(complaintTechnicians.complaintId, updated.id));
+      if (newTechId) {
+        await db.insert(complaintTechnicians).values({
+          id: generateId(),
+          complaintId: updated.id,
+          technicianId: newTechId,
+        });
+      }
+    }
+
     const [result] = await withTechnicianIds([updated]);
     res.json(result);
 
@@ -343,8 +356,8 @@ router.patch("/complaints/:id", requireAuth, async (req, res) => {
   }
 });
 
-// PUT /complaints/:id/technicians — assign multiple technicians (admin only)
-router.put("/complaints/:id/technicians", requireAdmin, async (req, res) => {
+// PATCH /complaints/:id/technicians — assign multiple technicians (admin only)
+router.patch("/complaints/:id/technicians", requireAdmin, async (req, res) => {
   try {
     const { technicianIds } = req.body;
     if (!Array.isArray(technicianIds)) {

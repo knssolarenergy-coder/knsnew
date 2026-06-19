@@ -404,7 +404,7 @@ paths:
           description: Not found
 
   /complaints/{id}/technicians:
-    put:
+    patch:
       operationId: assignComplaintTechnicians
       tags: [complaints]
       summary: Assign multiple technicians to a complaint (admin only)
@@ -1762,7 +1762,7 @@ paths:
                 $ref: '#/components/schemas/SiteVisit'
 
   /site-visits/{id}/technicians:
-    put:
+    patch:
       operationId: assignSiteVisitTechnicians
       tags: [siteVisits]
       summary: Assign multiple technicians to a site visit (admin only)
