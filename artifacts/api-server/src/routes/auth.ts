@@ -2,17 +2,11 @@ import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { eq, ne, count } from "drizzle-orm";
 import { Router } from "express";
-import { Resend } from "resend";
 import { db, users, referrals, settings, passwordResetTokens, bookings, complaints, quotes, warranties } from "@workspace/db";
 import { signToken, verifyToken } from "../lib/jwt.js";
 import { requireAuth } from "../middleware/auth.js";
+import { sendEmail } from "../lib/notifications.js";
 import PDFDocument from "pdfkit";
-
-function getResend() {
-  const key = process.env["RESEND_API_KEY"];
-  if (!key) throw new Error("RESEND_API_KEY is not set. Email sending is unavailable.");
-  return new Resend(key);
-}
 
 const router = Router();
 
@@ -267,12 +261,10 @@ router.post("/auth/forgot-password", async (req, res) => {
       ? `https://${domain}/(auth)/reset-password?token=${token}`
       : `http://localhost:3000/(auth)/reset-password?token=${token}`;
 
-    await getResend().emails.send({
-      from: "K&S Solar Energy <onboarding@resend.dev>",
-      to: user.email,
-      subject: "Reset Your Password — K&S Solar Energy",
-      html: `
-<!DOCTYPE html>
+    await sendEmail(
+      user.email,
+      "Reset Your Password — K&S Solar Energy",
+      `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,sans-serif;">
@@ -314,8 +306,8 @@ router.post("/auth/forgot-password", async (req, res) => {
     </td></tr>
   </table>
 </body>
-</html>`,
-    });
+</html>`
+    );
 
     req.log.info({ userId: user.id }, "Password reset email sent");
     res.json({ message: "If this email is registered, a reset link has been sent." });

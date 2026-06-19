@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import { db, users } from "@workspace/db";
+import { db, users, settings } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger.js";
 
@@ -8,7 +8,18 @@ function getResend() {
   if (!key) return null;
   return new Resend(key);
 }
-const EMAIL_FROM = "K&S Solar Energy <onboarding@resend.dev>";
+
+async function getEmailFrom(): Promise<string> {
+  try {
+    const [row] = await db.select().from(settings).where(eq(settings.key, "email_from"));
+    if (row?.value) return row.value;
+  } catch { /* ignore */ }
+  return "K&S Solar Energy <onboarding@resend.dev>";
+}
+
+async function getAdminEmail(): Promise<string> {
+  return (process.env["ADMIN_EMAIL"] ?? "admin@kssolar.pk").toLowerCase();
+}
 
 function emailLayout(subtitle: string, body: string): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -42,7 +53,8 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
     return;
   }
   try {
-    await resend.emails.send({ from: EMAIL_FROM, to, subject, html });
+    const from = await getEmailFrom();
+    await resend.emails.send({ from, to, subject, html });
   } catch (err) {
     logger.warn({ err }, "Failed to send email");
   }
@@ -93,17 +105,23 @@ export async function notifyAdmins(opts: {
   pushTitle: string;
   pushBody: string;
   pushData?: Record<string, unknown>;
+  emailSubject?: string;
+  emailHtml?: string;
 }): Promise<void> {
   try {
     const admins = await db
       .select({ pushToken: users.pushToken })
       .from(users)
       .where(eq(users.isAdmin, true));
-    await Promise.all(
-      admins
-        .filter((a) => !!a.pushToken)
-        .map((a) => sendPush(a.pushToken, opts.pushTitle, opts.pushBody, opts.pushData))
-    );
+    const pushes = admins
+      .filter((a) => !!a.pushToken)
+      .map((a) => sendPush(a.pushToken, opts.pushTitle, opts.pushBody, opts.pushData));
+    const emailTasks: Promise<void>[] = [];
+    if (opts.emailSubject && opts.emailHtml) {
+      const adminEmail = await getAdminEmail();
+      emailTasks.push(sendEmail(adminEmail, opts.emailSubject, opts.emailHtml));
+    }
+    await Promise.all([...pushes, ...emailTasks]);
   } catch (err) {
     logger.warn({ err }, "Failed to notify admins");
   }
@@ -115,13 +133,25 @@ export async function notifyTechnician(
     pushTitle: string;
     pushBody: string;
     pushData?: Record<string, unknown>;
+    emailSubject?: string;
+    emailHtml?: string | ((techName: string) => string);
   }
 ): Promise<void> {
   if (!technicianId) return;
   try {
-    const [tech] = await db.select({ pushToken: users.pushToken }).from(users).where(eq(users.id, technicianId));
+    const [tech] = await db
+      .select({ pushToken: users.pushToken, email: users.email, name: users.name })
+      .from(users)
+      .where(eq(users.id, technicianId));
     if (!tech) return;
-    await sendPush(tech.pushToken, opts.pushTitle, opts.pushBody, opts.pushData);
+    const tasks: Promise<void>[] = [
+      sendPush(tech.pushToken, opts.pushTitle, opts.pushBody, opts.pushData),
+    ];
+    if (opts.emailSubject && opts.emailHtml) {
+      const html = typeof opts.emailHtml === "function" ? opts.emailHtml(tech.name) : opts.emailHtml;
+      tasks.push(sendEmail(tech.email, opts.emailSubject, html));
+    }
+    await Promise.all(tasks);
   } catch (err) {
     logger.warn({ err, technicianId }, "Failed to notify technician");
   }
@@ -168,6 +198,92 @@ export function bookingEmailHtml(
     ${detailRows}
     <p style="color:#888;font-size:13px;margin:20px 0 0;">For assistance, please contact us via WhatsApp.</p>`;
   return emailLayout(isNew ? "Booking Confirmation" : "Booking Status Update", body);
+}
+
+export function technicianBookingEmailHtml(
+  techName: string,
+  customer: string,
+  date: string,
+  time: string,
+  address: string,
+  panels: string
+): string {
+  const body = `
+    <h2 style="color:#1E3A5F;margin:0 0 12px;font-size:18px;">New Job Assigned 🔧</h2>
+    <p style="color:#555;font-size:14px;line-height:1.6;margin:0 0 8px;">Hello <strong>${techName}</strong>,</p>
+    <p style="color:#555;font-size:14px;line-height:1.6;margin:0 0 16px;">A solar panel washing booking has been assigned to you. Please review the details below.</p>
+    <table width="100%" style="background:#f8fafc;border-radius:10px;margin:0 0 16px;border-collapse:collapse;">
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">👤 Customer: <strong>${customer}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">📅 Date: <strong>${date}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">🕐 Time: <strong>${time}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">🔆 Panels: <strong>${panels}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;">📍 Address: <strong>${address}</strong></td></tr>
+    </table>
+    <p style="color:#888;font-size:13px;margin:0;">Please open the K&amp;S Solar app to view more details and update the job status.</p>`;
+  return emailLayout("Job Assignment", body);
+}
+
+export function technicianComplaintEmailHtml(
+  techName: string,
+  customer: string,
+  subject: string,
+  address: string
+): string {
+  const body = `
+    <h2 style="color:#DC2626;margin:0 0 12px;font-size:18px;">Complaint Assigned ⚠️</h2>
+    <p style="color:#555;font-size:14px;line-height:1.6;margin:0 0 8px;">Hello <strong>${techName}</strong>,</p>
+    <p style="color:#555;font-size:14px;line-height:1.6;margin:0 0 16px;">A customer complaint has been assigned to you. Please review the details below.</p>
+    <table width="100%" style="background:#f8fafc;border-radius:10px;margin:0 0 16px;border-collapse:collapse;">
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">👤 Customer: <strong>${customer}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">⚠️ Subject: <strong>${subject}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;">📍 Address: <strong>${address}</strong></td></tr>
+    </table>
+    <p style="color:#888;font-size:13px;margin:0;">Please open the K&amp;S Solar app to view more details and update the complaint status.</p>`;
+  return emailLayout("Complaint Assignment", body);
+}
+
+export function adminNewBookingEmailHtml(
+  customer: string,
+  date: string,
+  time: string,
+  address: string,
+  panels: string,
+  phone: string
+): string {
+  const body = `
+    <h2 style="color:#1E3A5F;margin:0 0 12px;font-size:18px;">New Booking Received 📋</h2>
+    <p style="color:#555;font-size:14px;line-height:1.6;margin:0 0 16px;">A new solar panel washing booking has been submitted.</p>
+    <table width="100%" style="background:#f8fafc;border-radius:10px;margin:0 0 16px;border-collapse:collapse;">
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">👤 Customer: <strong>${customer}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">📞 Phone: <strong>${phone}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">📅 Date: <strong>${date}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">🕐 Time: <strong>${time}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">🔆 Panels: <strong>${panels}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;">📍 Address: <strong>${address}</strong></td></tr>
+    </table>
+    <p style="color:#888;font-size:13px;margin:0;">Log in to the admin panel to review and assign a technician.</p>`;
+  return emailLayout("New Booking Alert", body);
+}
+
+export function adminNewComplaintEmailHtml(
+  customer: string,
+  subject: string,
+  address: string,
+  message: string,
+  phone: string
+): string {
+  const body = `
+    <h2 style="color:#DC2626;margin:0 0 12px;font-size:18px;">New Complaint Received ⚠️</h2>
+    <p style="color:#555;font-size:14px;line-height:1.6;margin:0 0 16px;">A new customer complaint has been submitted.</p>
+    <table width="100%" style="background:#f8fafc;border-radius:10px;margin:0 0 16px;border-collapse:collapse;">
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">👤 Customer: <strong>${customer}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">📞 Phone: <strong>${phone}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">⚠️ Subject: <strong>${subject}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;border-bottom:1px solid #eee;">📍 Address: <strong>${address}</strong></td></tr>
+      <tr><td style="padding:8px 14px;font-size:13px;color:#555;">💬 Message: <strong>${message}</strong></td></tr>
+    </table>
+    <p style="color:#888;font-size:13px;margin:0;">Log in to the admin panel to assign a technician.</p>`;
+  return emailLayout("New Complaint Alert", body);
 }
 
 export function complaintEmailHtml(name: string, subject: string, status: string): string {

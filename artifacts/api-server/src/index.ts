@@ -58,6 +58,7 @@ async function seedSettings() {
     { key: "whatsapp_support", value: "923001234567" },
     { key: "whatsapp_ai_support", value: "923001234567" },
     { key: "ai_support_enabled", value: "true" },
+    { key: "email_from", value: "K&S Solar Energy <onboarding@resend.dev>" },
     { key: "contact_phone", value: "" },
     { key: "contact_email", value: "" },
     { key: "contact_address", value: "" },

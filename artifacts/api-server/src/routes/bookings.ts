@@ -2,7 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { Router } from "express";
 import { db, bookings, users, bookingTechnicians } from "@workspace/db";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
-import { notifyUser, notifyAdmins, notifyTechnician, bookingEmailHtml } from "../lib/notifications.js";
+import { notifyUser, notifyAdmins, notifyTechnician, bookingEmailHtml, adminNewBookingEmailHtml, technicianBookingEmailHtml } from "../lib/notifications.js";
 
 const router = Router();
 
@@ -120,6 +120,12 @@ router.post("/bookings/guest", async (req, res) => {
       pushTitle: "New Booking 📋",
       pushBody: `${booking.customerName} — ${booking.preferredDate}`,
       pushData: { type: "booking_new", tab: "admin" },
+      emailSubject: "New Booking Received – K&S Solar Energy",
+      emailHtml: adminNewBookingEmailHtml(
+        booking.customerName, booking.preferredDate, booking.preferredTime,
+        `${booking.address}, ${booking.city}`, `${booking.panelCount} (${booking.panelType})`,
+        booking.phone
+      ),
     }).catch(() => {});
   } catch (err) {
     req.log.error({ err }, "Failed to create guest booking");
@@ -157,6 +163,12 @@ router.post("/bookings", requireAuth, async (req, res) => {
       pushTitle: "New Booking 📋",
       pushBody: `${booking.customerName} — ${booking.preferredDate}`,
       pushData: { type: "booking_new", tab: "admin" },
+      emailSubject: "New Booking Received – K&S Solar Energy",
+      emailHtml: adminNewBookingEmailHtml(
+        booking.customerName, booking.preferredDate, booking.preferredTime,
+        `${booking.address}, ${booking.city}`, `${booking.panelCount} (${booking.panelType})`,
+        booking.phone
+      ),
     }).catch(() => {});
   } catch (err) {
     req.log.error({ err }, "Failed to create booking");
@@ -244,6 +256,11 @@ router.put("/bookings/:id/technicians", requireAdmin, async (req, res) => {
         pushTitle: "New Job Assigned 🔧",
         pushBody: `Booking for ${booking.customerName} on ${booking.preferredDate}`,
         pushData: { type: "booking_assigned", id: bookingId },
+        emailSubject: "New Job Assigned – K&S Solar Energy",
+        emailHtml: (techName) => technicianBookingEmailHtml(
+          techName, booking.customerName, booking.preferredDate, booking.preferredTime,
+          `${booking.address}, ${booking.city}`, `${booking.panelCount} (${booking.panelType})`
+        ),
       }).catch(() => {});
     }
   } catch (err) {

@@ -2,7 +2,7 @@ import { and, eq, or, sql } from "drizzle-orm";
 import { Router } from "express";
 import { db, complaints, users } from "@workspace/db";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
-import { notifyUser, notifyAdmins, notifyTechnician, complaintEmailHtml } from "../lib/notifications.js";
+import { notifyUser, notifyAdmins, notifyTechnician, complaintEmailHtml, adminNewComplaintEmailHtml, technicianComplaintEmailHtml } from "../lib/notifications.js";
 
 const router = Router();
 
@@ -98,6 +98,11 @@ router.post("/complaints", requireAuth, async (req, res) => {
       pushTitle: "New Complaint ⚠️",
       pushBody: complaint.subject,
       pushData: { type: "complaint_new", tab: "admin" },
+      emailSubject: "New Complaint Received – K&S Solar Energy",
+      emailHtml: adminNewComplaintEmailHtml(
+        complaint.customerName ?? "Unknown", complaint.subject,
+        complaint.address ?? "", complaint.message, complaint.phone ?? ""
+      ),
     }).catch(() => {});
   } catch (err) {
     req.log.error({ err }, "Failed to create complaint");
@@ -135,6 +140,10 @@ router.post("/complaints/guest", async (req, res) => {
       pushTitle: "New Complaint ⚠️",
       pushBody: String(subject),
       pushData: { type: "complaint_new" },
+      emailSubject: "New Complaint Received – K&S Solar Energy",
+      emailHtml: adminNewComplaintEmailHtml(
+        String(customerName), String(subject), String(address), String(message), String(phone)
+      ),
     }).catch(() => {});
   } catch (err) {
     req.log.error({ err }, "Failed to create guest complaint");
@@ -268,6 +277,11 @@ router.patch("/complaints/:id", requireAuth, async (req, res) => {
         pushTitle: "Complaint Assigned ⚠️",
         pushBody: `Subject: ${updated.subject}`,
         pushData: { type: "complaint_assigned", id: updated.id },
+        emailSubject: "Complaint Assigned – K&S Solar Energy",
+        emailHtml: (techName) => technicianComplaintEmailHtml(
+          techName, updated.customerName ?? "Customer",
+          updated.subject, updated.address ?? ""
+        ),
       }).catch(() => {});
     }
   } catch (err) {
