@@ -30,13 +30,13 @@ if (Platform.OS !== "web") {
   }
 }
 
-if (Platform.OS === "web") {
-  if (typeof window !== "undefined") {
-    setBaseUrl(window.location.origin);
-  }
-} else {
-  setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
-}
+const _apiOrigin = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : typeof window !== "undefined"
+  ? window.location.origin
+  : "";
+
+setBaseUrl(_apiOrigin);
 
 SplashScreen.preventAutoHideAsync();
 
@@ -46,10 +46,7 @@ const queryClient = new QueryClient({
   },
 });
 
-const API_BASE =
-  Platform.OS === "web" && typeof window !== "undefined"
-    ? `${window.location.origin}/api`
-    : `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+const API_BASE = `${_apiOrigin}/api`;
 
 function PushManager() {
   const { user, token } = useAuth();
