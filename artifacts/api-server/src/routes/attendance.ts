@@ -64,6 +64,39 @@ function toLocalHHMM(d: Date, timezone: string): string {
   }
 }
 
+// Compute start/end of the current local calendar day (midnight–midnight) as UTC Date objects.
+// Uses noon-UTC offset trick to avoid DST-at-midnight edge cases.
+function getLocalDayBoundsUTC(timezone: string): { todayUTC: Date; tomorrowUTC: Date } {
+  try {
+    const now = new Date();
+    // Get the local date string (YYYY-MM-DD) in the target timezone
+    const localDateStr = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(now);
+    const [year, month, day] = localDateStr.split("-").map(Number) as [number, number, number];
+
+    // Find UTC offset at noon on this local date (noon avoids DST transitions at midnight)
+    const noonUTC = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+    const noonParts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone, hour: "2-digit", minute: "2-digit", hour12: false,
+    }).formatToParts(noonUTC);
+    let localNoonH = parseInt(noonParts.find(p => p.type === "hour")?.value ?? "12", 10);
+    const localNoonM = parseInt(noonParts.find(p => p.type === "minute")?.value ?? "0", 10);
+    if (localNoonH === 24) localNoonH = 0;
+    const offsetMins = localNoonH * 60 + localNoonM - 12 * 60; // e.g. PKT UTC+5 → 300
+
+    // Local midnight = UTC midnight of that date shifted back by the offset
+    const utcMidnight = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+    const todayUTC = new Date(utcMidnight.getTime() - offsetMins * 60 * 1000);
+    const tomorrowUTC = new Date(todayUTC.getTime() + 24 * 60 * 60 * 1000);
+    return { todayUTC, tomorrowUTC };
+  } catch {
+    // Fallback: UTC day boundaries
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    return { todayUTC: today, tomorrowUTC: tomorrow };
+  }
+}
+
 function calcStats(
   checkIn: Date,
   checkOut: Date | null,
@@ -325,10 +358,7 @@ router.get("/attendance/absent-today", requireAdmin, async (req, res) => {
     return;
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
+  const { todayUTC, tomorrowUTC } = getLocalDayBoundsUTC(timezone);
 
   const technicians = await db
     .select({ id: users.id, name: users.name, phone: users.phone })
@@ -343,7 +373,7 @@ router.get("/attendance/absent-today", requireAdmin, async (req, res) => {
   const todayCheckins = await db
     .select({ technicianId: attendance.technicianId })
     .from(attendance)
-    .where(and(gte(attendance.checkInAt, today), lt(attendance.checkInAt, tomorrow)));
+    .where(and(gte(attendance.checkInAt, todayUTC), lt(attendance.checkInAt, tomorrowUTC)));
 
   const checkedInIds = new Set(todayCheckins.map(r => r.technicianId));
   const absent = technicians.filter(t => !checkedInIds.has(t.id));

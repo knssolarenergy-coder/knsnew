@@ -128,10 +128,26 @@ function scheduleAbsentAlert() {
 
       lastAlertDay = todayKey;
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(today.getDate() + 1);
+      // Compute local day bounds in configured timezone
+      let todayUTC: Date, tomorrowUTC: Date;
+      try {
+        const localDateStr = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(now);
+        const [yr, mo, dy] = localDateStr.split("-").map(Number) as [number, number, number];
+        const noonUTC = new Date(Date.UTC(yr, mo - 1, dy, 12, 0, 0));
+        const nParts = new Intl.DateTimeFormat("en-US", {
+          timeZone: timezone, hour: "2-digit", minute: "2-digit", hour12: false,
+        }).formatToParts(noonUTC);
+        let nH = parseInt(nParts.find(p => p.type === "hour")?.value ?? "12", 10);
+        const nM = parseInt(nParts.find(p => p.type === "minute")?.value ?? "0", 10);
+        if (nH === 24) nH = 0;
+        const offsetMins = nH * 60 + nM - 720;
+        const utcMid = new Date(Date.UTC(yr, mo - 1, dy, 0, 0, 0));
+        todayUTC = new Date(utcMid.getTime() - offsetMins * 60 * 1000);
+        tomorrowUTC = new Date(todayUTC.getTime() + 24 * 60 * 60 * 1000);
+      } catch {
+        const t = new Date(); t.setUTCHours(0, 0, 0, 0);
+        todayUTC = t; tomorrowUTC = new Date(t.getTime() + 86400000);
+      }
 
       const technicians = await db
         .select({ id: users.id, name: users.name, phone: users.phone })
@@ -143,7 +159,7 @@ function scheduleAbsentAlert() {
       const todayCheckins = await db
         .select({ technicianId: attendance.technicianId })
         .from(attendance)
-        .where(and(gte(attendance.checkInAt, today), lt(attendance.checkInAt, tomorrow)));
+        .where(and(gte(attendance.checkInAt, todayUTC), lt(attendance.checkInAt, tomorrowUTC)));
 
       const checkedInIds = new Set(todayCheckins.map(r => r.technicianId));
       const absent = technicians.filter(t => !checkedInIds.has(t.id));
