@@ -18,12 +18,9 @@
       "android": {
         "buildType": "apk"
       },
-      "ios": {
-        "simulator": false
-      },
       "env": {
         "EXPO_PUBLIC_DOMAIN": "solar-service-hub--yousafkhan8368.replit.app",
-        "EXPO_PUBLIC_MAPBOX_TOKEN": "EXPO_PUBLIC_MAPBOX_TOKEN"
+        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoieW91c2FmNDMiLCJhIjoiY21xaGtvZTcyMGJ2ODJxcW51ZWdxcmt5cSJ9.wtxo5gOcB5PB7kljp-INNw"
       }
     },
     "production": {
@@ -32,7 +29,7 @@
       },
       "env": {
         "EXPO_PUBLIC_DOMAIN": "solar-service-hub--yousafkhan8368.replit.app",
-        "EXPO_PUBLIC_MAPBOX_TOKEN": "EXPO_PUBLIC_MAPBOX_TOKEN"
+        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoieW91c2FmNDMiLCJhIjoiY21xaGtvZTcyMGJ2ODJxcW51ZWdxcmt5cSJ9.wtxo5gOcB5PB7kljp-INNw"
       }
     }
   },
