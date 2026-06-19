@@ -210,7 +210,7 @@ export function LiveMapModal({ visible, onClose }: Props) {
           ) : (
             <MapboxGL.MapView
               style={StyleSheet.absoluteFill}
-              styleURL={MapboxGL.StyleURL.Light}
+              styleURL="mapbox://styles/mapbox/light-v11"
               logoEnabled={false}
               attributionEnabled={false}
               compassEnabled={false}

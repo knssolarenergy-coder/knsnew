@@ -284,9 +284,12 @@ export default function TechnicianScreen() {
     }
   }, [todayRecord?.id, todayRecord?.checkOutAt]);
 
-  // Enforce location stays ON while checked in. Polls every 5 s and flips
-  // locationBlocked state which shows a full-screen overlay — technician cannot
-  // interact with anything until they re-enable location or check out.
+  // Enforce location stays ON while checked in.
+  // Strategy: poll every 3 s + immediately check on every foreground transition.
+  // This catches the case where the user turns GPS off while the app is open
+  // AND when they come back to the app after doing so from settings.
+  // Note: we CANNOT prevent the OS from letting users turn GPS off — but we
+  // show a blocking overlay the instant we detect it so they must re-enable.
   useEffect(() => {
     if (Platform.OS === "web") return;
     if (!todayRecord || todayRecord.checkOutAt) {
@@ -302,11 +305,21 @@ export default function TechnicianScreen() {
         setLocationBlocked(!enabled || status !== "granted");
       } catch { }
     }
+    // Immediate check
     checkLocation();
-    const watchId = setInterval(checkLocation, 5000);
+    // Poll every 3 s (faster than before — catches GPS-off quicker)
+    const watchId = setInterval(checkLocation, 3000);
+    // Also check immediately whenever app comes to foreground — this is the key
+    // fix for "app was closed / put in background while GPS was turned off".
+    const appStateSub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        checkLocation();
+      }
+    });
     return () => {
       cancelled = true;
       clearInterval(watchId);
+      appStateSub.remove();
       setLocationBlocked(false);
     };
   }, [todayRecord?.id, todayRecord?.checkOutAt]);

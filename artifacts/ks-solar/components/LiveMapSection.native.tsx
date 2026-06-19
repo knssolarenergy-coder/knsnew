@@ -221,7 +221,7 @@ export function LiveMapSection() {
     <View style={{ flex: 1 }}>
       <MapboxGL.MapView
         style={StyleSheet.absoluteFill}
-        styleURL={MapboxGL.StyleURL.Light}
+        styleURL="mapbox://styles/mapbox/light-v11"
         logoEnabled={false}
         attributionEnabled={false}
         compassEnabled
