@@ -91,3 +91,5 @@ channel = "stable-25_05"
 [userenv.shared]
 EXPO_TOKEN = "1v8k6n8PCDjJxs5rXmbGLUAmXEFNUum2zZ0gselS"
 EXPO_PUBLIC_MAPBOX_TOKEN = "pk.eyJ1IjoieW91c2FmNDMiLCJhIjoiY21xaGtvZTcyMGJ2ODJxcW51ZWdxcmt5cSJ9.wtxo5gOcB5PB7kljp-INNw"
+ADMIN_EMAIL = "knssolarenergy@gmail.com"
+ADMIN_PASSWORD = "@Knssolar43"
