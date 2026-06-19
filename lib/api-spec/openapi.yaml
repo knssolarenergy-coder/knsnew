@@ -403,6 +403,37 @@ paths:
         "404":
           description: Not found
 
+  /complaints/{id}/technicians:
+    put:
+      operationId: assignComplaintTechnicians
+      tags: [complaints]
+      summary: Assign multiple technicians to a complaint (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignTechniciansRequest"
+      responses:
+        "200":
+          description: Technicians assigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Complaint"
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+
   /complaints/{id}/status:
     patch:
       operationId: updateComplaintStatus
@@ -1730,6 +1761,37 @@ paths:
               schema:
                 $ref: '#/components/schemas/SiteVisit'
 
+  /site-visits/{id}/technicians:
+    put:
+      operationId: assignSiteVisitTechnicians
+      tags: [siteVisits]
+      summary: Assign multiple technicians to a site visit (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignTechniciansRequest"
+      responses:
+        "200":
+          description: Technicians assigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteVisit"
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+
   /site-visits/{id}:
     patch:
       operationId: updateSiteVisit
@@ -2520,6 +2582,10 @@ components:
         technicianId:
           type: string
           nullable: true
+        technicianIds:
+          type: array
+          items:
+            type: string
         statusHistory:
           type: array
           nullable: true
@@ -2545,6 +2611,7 @@ components:
         - address
         - message
         - status
+        - technicianIds
         - createdAt
 
     Quote:
@@ -3140,7 +3207,7 @@ components:
 
     SiteVisit:
       type: object
-      required: [id, customerName, phone, address, purpose, status, createdAt]
+      required: [id, customerName, phone, address, purpose, status, technicianIds, createdAt]
       properties:
         id:
           type: string
@@ -3167,6 +3234,10 @@ components:
         technicianName:
           type: string
           nullable: true
+        technicianIds:
+          type: array
+          items:
+            type: string
         scheduledDate:
           type: string
           nullable: true

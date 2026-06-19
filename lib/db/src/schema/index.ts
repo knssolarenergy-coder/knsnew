@@ -145,6 +145,20 @@ export const bookingTechnicians = pgTable("booking_technicians", {
   assignedAt: timestamp("assigned_at").defaultNow().notNull(),
 });
 
+export const complaintTechnicians = pgTable("complaint_technicians", {
+  id: text("id").primaryKey(),
+  complaintId: text("complaint_id").notNull().references(() => complaints.id, { onDelete: "cascade" }),
+  technicianId: text("technician_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  assignedAt: timestamp("assigned_at").defaultNow().notNull(),
+});
+
+export const siteVisitTechnicians = pgTable("site_visit_technicians", {
+  id: text("id").primaryKey(),
+  siteVisitId: text("site_visit_id").notNull().references(() => siteVisits.id, { onDelete: "cascade" }),
+  technicianId: text("technician_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  assignedAt: timestamp("assigned_at").defaultNow().notNull(),
+});
+
 export const sites = pgTable("sites", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

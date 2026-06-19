@@ -1,6 +1,6 @@
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { Router } from "express";
-import { db, complaints, users } from "@workspace/db";
+import { db, complaints, users, complaintTechnicians } from "@workspace/db";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { notifyUser, notifyAdmins, notifyTechnician, complaintEmailHtml, adminNewComplaintEmailHtml, technicianComplaintEmailHtml } from "../lib/notifications.js";
 
@@ -13,18 +13,50 @@ function generateId(): string {
 const VALID_SUBJECTS = ["Hybrid System", "OnGrid System", "Off-Grid System", "Tubewell System"];
 const ALLOWED_STATUSES = ["submitted", "in_progress", "resolved", "closed"];
 
+type ComplaintWithTechs = typeof complaints.$inferSelect & { technicianIds: string[] };
+
+async function withTechnicianIds(rows: (typeof complaints.$inferSelect)[]): Promise<ComplaintWithTechs[]> {
+  if (rows.length === 0) return rows.map((r) => ({ ...r, technicianIds: [] }));
+  const ids = rows.map((r) => r.id);
+  const techRows = await db
+    .select({ complaintId: complaintTechnicians.complaintId, technicianId: complaintTechnicians.technicianId })
+    .from(complaintTechnicians)
+    .where(inArray(complaintTechnicians.complaintId, ids));
+  const map: Record<string, string[]> = {};
+  for (const row of techRows) {
+    if (!map[row.complaintId]) map[row.complaintId] = [];
+    map[row.complaintId].push(row.technicianId);
+  }
+  return rows.map((r) => ({ ...r, technicianIds: map[r.id] ?? [] }));
+}
+
 router.get("/complaints", requireAuth, async (req, res) => {
   try {
-    const result = req.auth!.isAdmin
-      ? await db.select().from(complaints).orderBy(sql`${complaints.createdAt} DESC`)
-      : req.auth!.isTechnician
-        ? await db.select().from(complaints)
-            .where(eq(complaints.technicianId, req.auth!.userId))
-            .orderBy(sql`${complaints.createdAt} DESC`)
-        : await db.select().from(complaints)
-            .where(eq(complaints.userId, req.auth!.userId))
-            .orderBy(sql`${complaints.createdAt} DESC`);
-    res.json(result);
+    let raw: (typeof complaints.$inferSelect)[];
+    if (req.auth!.isAdmin) {
+      raw = await db.select().from(complaints).orderBy(sql`${complaints.createdAt} DESC`);
+    } else if (req.auth!.isTechnician) {
+      const userId = req.auth!.userId;
+      // Technician sees complaints assigned via join table OR legacy technicianId column
+      raw = await db.select().from(complaints)
+        .where(
+          or(
+            eq(complaints.technicianId, userId),
+            inArray(
+              complaints.id,
+              db.select({ complaintId: complaintTechnicians.complaintId })
+                .from(complaintTechnicians)
+                .where(eq(complaintTechnicians.technicianId, userId))
+            )
+          )
+        )
+        .orderBy(sql`${complaints.createdAt} DESC`);
+    } else {
+      raw = await db.select().from(complaints)
+        .where(eq(complaints.userId, req.auth!.userId))
+        .orderBy(sql`${complaints.createdAt} DESC`);
+    }
+    res.json(await withTechnicianIds(raw));
   } catch (err) {
     req.log.error({ err }, "Failed to get complaints");
     res.status(500).json({ error: "Internal server error" });
@@ -41,17 +73,24 @@ router.get("/complaints/:id", requireAuth, async (req, res) => {
       return;
     }
 
-    // Admins see all; assigned technicians see their own; customers see their own
-    const isTech = req.auth!.isTechnician;
+    // Check if technician is assigned via join table
+    let isAssignedTech = false;
+    if (req.auth!.isTechnician) {
+      const [row] = await db.select({ id: complaintTechnicians.id })
+        .from(complaintTechnicians)
+        .where(and(eq(complaintTechnicians.complaintId, complaint.id), eq(complaintTechnicians.technicianId, req.auth!.userId)));
+      isAssignedTech = !!row || complaint.technicianId === req.auth!.userId;
+    }
+
     const isAdmin = req.auth!.isAdmin;
     const isOwner = complaint.userId === req.auth!.userId;
-    const isAssignedTech = isTech && complaint.technicianId === req.auth!.userId;
     if (!isAdmin && !isOwner && !isAssignedTech) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
 
-    res.json(complaint);
+    const [result] = await withTechnicianIds([complaint]);
+    res.json(result);
   } catch (err) {
     req.log.error({ err }, "Failed to get complaint");
     res.status(500).json({ error: "Internal server error" });
@@ -84,7 +123,8 @@ router.post("/complaints", requireAuth, async (req, res) => {
       statusHistory: [{ status: "submitted", changedAt: new Date().toISOString() }],
     }).returning();
 
-    res.status(201).json(complaint);
+    const [result] = await withTechnicianIds([complaint]);
+    res.status(201).json(result);
 
     // Non-blocking: send confirmation to customer + alert admins
     notifyUser(req.auth!.userId, {
@@ -135,7 +175,8 @@ router.post("/complaints/guest", async (req, res) => {
       statusHistory: [{ status: "submitted", changedAt: new Date().toISOString() }],
     }).returning();
 
-    res.status(201).json(complaint);
+    const [result] = await withTechnicianIds([complaint]);
+    res.status(201).json(result);
     notifyAdmins({
       pushTitle: "New Complaint ⚠️",
       pushBody: String(subject),
@@ -177,9 +218,13 @@ router.patch("/complaints/:id", requireAuth, async (req, res) => {
       return;
     }
 
-    // Technicians: only allow status update on complaints assigned to them
+    // Technicians: check assignment via join table or legacy column
     if (isTech && !isAdmin) {
-      if (existing.technicianId !== req.auth!.userId) {
+      const [row] = await db.select({ id: complaintTechnicians.id })
+        .from(complaintTechnicians)
+        .where(and(eq(complaintTechnicians.complaintId, existing.id), eq(complaintTechnicians.technicianId, req.auth!.userId)));
+      const isAssigned = !!row || existing.technicianId === req.auth!.userId;
+      if (!isAssigned) {
         res.status(403).json({ error: "You can only update complaints assigned to you" });
         return;
       }
@@ -199,7 +244,8 @@ router.patch("/complaints/:id", requireAuth, async (req, res) => {
         })
         .where(eq(complaints.id, String(req.params.id)))
         .returning();
-      res.json(updated);
+      const [result] = await withTechnicianIds([updated]);
+      res.json(result);
 
       // Non-blocking: notify customer of status change
       if (statusChanged && updated.userId) {
@@ -248,7 +294,8 @@ router.patch("/complaints/:id", requireAuth, async (req, res) => {
     }
 
     if (Object.keys(updates).length === 0) {
-      res.json(existing);
+      const [result] = await withTechnicianIds([existing]);
+      res.json(result);
       return;
     }
 
@@ -258,7 +305,8 @@ router.patch("/complaints/:id", requireAuth, async (req, res) => {
       .where(eq(complaints.id, String(req.params.id)))
       .returning();
 
-    res.json(updated);
+    const [result] = await withTechnicianIds([updated]);
+    res.json(result);
 
     // Non-blocking: notify customer of status change
     if (statusChanged && updated.userId) {
@@ -286,6 +334,53 @@ router.patch("/complaints/:id", requireAuth, async (req, res) => {
     }
   } catch (err) {
     req.log.error({ err }, "Failed to update complaint");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PUT /complaints/:id/technicians — assign multiple technicians (admin only)
+router.put("/complaints/:id/technicians", requireAdmin, async (req, res) => {
+  try {
+    const { technicianIds } = req.body;
+    if (!Array.isArray(technicianIds)) {
+      res.status(400).json({ error: "technicianIds must be an array" }); return;
+    }
+    const complaintId = String(req.params.id);
+    const [complaint] = await db.select().from(complaints).where(eq(complaints.id, complaintId));
+    if (!complaint) { res.status(404).json({ error: "Complaint not found" }); return; }
+    await db.delete(complaintTechnicians).where(eq(complaintTechnicians.complaintId, complaintId));
+    if (technicianIds.length > 0) {
+      await db.insert(complaintTechnicians).values(
+        technicianIds.map((techId: string) => ({
+          id: generateId(),
+          complaintId,
+          technicianId: String(techId),
+        }))
+      );
+    }
+    // Also update legacy technicianId column (first assigned or null)
+    await db.update(complaints)
+      .set({ technicianId: technicianIds.length > 0 ? String(technicianIds[0]) : null })
+      .where(eq(complaints.id, complaintId));
+    const [updatedComplaint] = await db.select().from(complaints).where(eq(complaints.id, complaintId));
+    const [result] = await withTechnicianIds([updatedComplaint]);
+    res.json(result);
+    req.log.info({ complaintId, technicianIds }, "Complaint technicians updated");
+    // Notify each newly assigned technician
+    for (const techId of technicianIds as string[]) {
+      notifyTechnician(techId, {
+        pushTitle: "Complaint Assigned ⚠️",
+        pushBody: `Subject: ${complaint.subject}`,
+        pushData: { type: "complaint_assigned", id: complaintId },
+        emailSubject: "Complaint Assigned – K&S Solar Energy",
+        emailHtml: (techName) => technicianComplaintEmailHtml(
+          techName, complaint.customerName ?? "Customer",
+          complaint.subject, complaint.address ?? ""
+        ),
+      }).catch(() => {});
+    }
+  } catch (err) {
+    req.log.error({ err }, "Failed to assign complaint technicians");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -320,7 +415,8 @@ router.patch("/complaints/:id/status", requireAuth, requireAdmin, async (req, re
       .where(eq(complaints.id, String(req.params.id)))
       .returning();
 
-    res.json(complaint);
+    const [result] = await withTechnicianIds([complaint]);
+    res.json(result);
 
     // Non-blocking: notify customer of status change
     if (statusChanged && complaint.userId) {

@@ -1,6 +1,6 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { Router } from "express";
-import { db, siteVisits, users } from "@workspace/db";
+import { db, siteVisits, users, siteVisitTechnicians } from "@workspace/db";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { notifyAdmins, notifyTechnician, siteVisitEmailHtml, adminNewSiteVisitEmailHtml } from "../lib/notifications.js";
 
@@ -10,15 +10,36 @@ function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
 }
 
-async function withTechnicianName(rows: (typeof siteVisits.$inferSelect)[]) {
-  if (rows.length === 0) return rows.map((r) => ({ ...r, technicianName: null as string | null }));
+type SiteVisitWithTechs = typeof siteVisits.$inferSelect & { technicianName: string | null; technicianIds: string[] };
+
+async function withTechnicianData(rows: (typeof siteVisits.$inferSelect)[]): Promise<SiteVisitWithTechs[]> {
+  if (rows.length === 0) return rows.map((r) => ({ ...r, technicianName: null, technicianIds: [] }));
+
+  // Fetch names for legacy assignedTo
   const techIds = [...new Set(rows.map((r) => r.assignedTo).filter(Boolean))] as string[];
   const techs = techIds.length
     ? await db.select({ id: users.id, name: users.name }).from(users).where(sql`${users.id} = ANY(${techIds})`)
     : [];
   const nameMap: Record<string, string> = {};
   for (const t of techs) nameMap[t.id] = t.name;
-  return rows.map((r) => ({ ...r, technicianName: r.assignedTo ? (nameMap[r.assignedTo] ?? null) : null }));
+
+  // Fetch join table technician IDs
+  const ids = rows.map((r) => r.id);
+  const techRows = await db
+    .select({ siteVisitId: siteVisitTechnicians.siteVisitId, technicianId: siteVisitTechnicians.technicianId })
+    .from(siteVisitTechnicians)
+    .where(inArray(siteVisitTechnicians.siteVisitId, ids));
+  const techIdsMap: Record<string, string[]> = {};
+  for (const row of techRows) {
+    if (!techIdsMap[row.siteVisitId]) techIdsMap[row.siteVisitId] = [];
+    techIdsMap[row.siteVisitId].push(row.technicianId);
+  }
+
+  return rows.map((r) => ({
+    ...r,
+    technicianName: r.assignedTo ? (nameMap[r.assignedTo] ?? null) : null,
+    technicianIds: techIdsMap[r.id] ?? [],
+  }));
 }
 
 // GET /site-visits — admin: all; technician: assigned to them
@@ -28,15 +49,26 @@ router.get("/site-visits", requireAuth, async (req, res) => {
     if (req.auth!.isAdmin) {
       rows = await db.select().from(siteVisits).orderBy(sql`${siteVisits.createdAt} DESC`);
     } else if (req.auth!.isTechnician) {
+      const userId = req.auth!.userId;
       rows = await db
         .select()
         .from(siteVisits)
-        .where(eq(siteVisits.assignedTo, req.auth!.userId))
+        .where(
+          or(
+            eq(siteVisits.assignedTo, userId),
+            inArray(
+              siteVisits.id,
+              db.select({ siteVisitId: siteVisitTechnicians.siteVisitId })
+                .from(siteVisitTechnicians)
+                .where(eq(siteVisitTechnicians.technicianId, userId))
+            )
+          )
+        )
         .orderBy(sql`${siteVisits.createdAt} DESC`);
     } else {
       res.status(403).json({ error: "Forbidden" }); return;
     }
-    res.json(await withTechnicianName(rows));
+    res.json(await withTechnicianData(rows));
   } catch (err) {
     req.log.error({ err }, "Failed to get site visits");
     res.status(500).json({ error: "Internal server error" });
@@ -63,7 +95,7 @@ router.post("/site-visits", requireAdmin, async (req, res) => {
       scheduledDate: scheduledDate ? String(scheduledDate) : null,
       scheduledTime: scheduledTime ? String(scheduledTime) : null,
     }).returning();
-    const [result] = await withTechnicianName([row]);
+    const [result] = await withTechnicianData([row]);
     req.log.info({ id: row.id }, "Site visit created");
     res.status(201).json(result);
     notifyAdmins({
@@ -96,7 +128,14 @@ router.patch("/site-visits/:id", requireAuth, async (req, res) => {
     if (!existing) { res.status(404).json({ error: "Site visit not found" }); return; }
 
     if (!req.auth!.isAdmin) {
-      if (!req.auth!.isTechnician || existing.assignedTo !== req.auth!.userId) {
+      if (!req.auth!.isTechnician) {
+        res.status(403).json({ error: "Forbidden" }); return;
+      }
+      // Check via join table or legacy assignedTo
+      const [row] = await db.select({ id: siteVisitTechnicians.id })
+        .from(siteVisitTechnicians)
+        .where(and(eq(siteVisitTechnicians.siteVisitId, id), eq(siteVisitTechnicians.technicianId, req.auth!.userId)));
+      if (!row && existing.assignedTo !== req.auth!.userId) {
         res.status(403).json({ error: "Forbidden" }); return;
       }
     }
@@ -119,16 +158,16 @@ router.patch("/site-visits/:id", requireAuth, async (req, res) => {
     if (technicianNotes !== undefined) updates.technicianNotes = technicianNotes ? String(technicianNotes) : null;
 
     if (Object.keys(updates).length === 0) {
-      const [result] = await withTechnicianName([existing]);
+      const [result] = await withTechnicianData([existing]);
       res.json(result); return;
     }
 
     const prevAssignedTo = existing.assignedTo;
     const [updated] = await db.update(siteVisits).set(updates).where(eq(siteVisits.id, id)).returning();
-    const [result] = await withTechnicianName([updated]);
+    const [result] = await withTechnicianData([updated]);
     req.log.info({ id }, "Site visit updated");
     res.json(result);
-    // Notify newly assigned technician
+    // Notify newly assigned technician (legacy assignedTo)
     if (updated.assignedTo && updated.assignedTo !== prevAssignedTo) {
       notifyTechnician(updated.assignedTo, {
         pushTitle: "Site Visit Assigned 📍",
@@ -140,6 +179,50 @@ router.patch("/site-visits/:id", requireAuth, async (req, res) => {
     }
   } catch (err) {
     req.log.error({ err }, "Failed to update site visit");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PUT /site-visits/:id/technicians — assign multiple technicians (admin only)
+router.put("/site-visits/:id/technicians", requireAdmin, async (req, res) => {
+  try {
+    const { technicianIds } = req.body;
+    if (!Array.isArray(technicianIds)) {
+      res.status(400).json({ error: "technicianIds must be an array" }); return;
+    }
+    const siteVisitId = String(req.params.id);
+    const [visit] = await db.select().from(siteVisits).where(eq(siteVisits.id, siteVisitId));
+    if (!visit) { res.status(404).json({ error: "Site visit not found" }); return; }
+    await db.delete(siteVisitTechnicians).where(eq(siteVisitTechnicians.siteVisitId, siteVisitId));
+    if (technicianIds.length > 0) {
+      await db.insert(siteVisitTechnicians).values(
+        technicianIds.map((techId: string) => ({
+          id: generateId(),
+          siteVisitId,
+          technicianId: String(techId),
+        }))
+      );
+    }
+    // Also sync legacy assignedTo to first assigned technician
+    await db.update(siteVisits)
+      .set({ assignedTo: technicianIds.length > 0 ? String(technicianIds[0]) : null })
+      .where(eq(siteVisits.id, siteVisitId));
+    const [updatedVisit] = await db.select().from(siteVisits).where(eq(siteVisits.id, siteVisitId));
+    const [result] = await withTechnicianData([updatedVisit]);
+    res.json(result);
+    req.log.info({ siteVisitId, technicianIds }, "Site visit technicians updated");
+    // Notify each newly assigned technician
+    for (const techId of technicianIds as string[]) {
+      notifyTechnician(techId, {
+        pushTitle: "Site Visit Assigned 📍",
+        pushBody: `${visit.purpose} — ${visit.customerName}${visit.scheduledDate ? ` on ${visit.scheduledDate}` : ""}`,
+        pushData: { type: "site_visit_assigned", id: siteVisitId },
+        emailSubject: `Site Visit Assigned — ${visit.customerName}`,
+        emailHtml: (techName) => siteVisitEmailHtml(techName, visit.customerName, visit.purpose, visit.address, visit.scheduledDate, visit.scheduledTime),
+      }).catch(() => {});
+    }
+  } catch (err) {
+    req.log.error({ err }, "Failed to assign site visit technicians");
     res.status(500).json({ error: "Internal server error" });
   }
 });
