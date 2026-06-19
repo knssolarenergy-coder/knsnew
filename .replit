@@ -11,6 +11,43 @@ env = { "CI" = "true" }
 [workflows]
 runButton = "Project"
 
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "K&S Solar App"
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=8080 NODE_ENV=development node artifacts/api-server/build.mjs && PORT=8080 NODE_ENV=development node --enable-source-maps artifacts/api-server/dist/index.mjs"
+waitForPort = 8080
+
+[[workflows.workflow]]
+name = "K&S Solar App"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/ks-solar && EXPO_PACKAGER_PROXY_URL=https://$REPLIT_EXPO_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN EXPO_PUBLIC_REPL_ID=$REPL_ID REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN PORT=25115 EXPO_PUBLIC_MAPBOX_TOKEN=pk.eyJ1IjoieW91c2FmNDMiLCJhIjoiY21xaGtvZTcyMGJ2ODJxcW51ZWdxcmt5cSJ9.wtxo5gOcB5PB7kljp-INNw npx expo start --localhost --port 25115"
+waitForPort = 25115
+
 [agent]
 stack = "PNPM_WORKSPACE"
 expertMode = true
@@ -47,3 +84,4 @@ channel = "stable-25_05"
 
 [userenv.shared]
 EXPO_TOKEN = "1v8k6n8PCDjJxs5rXmbGLUAmXEFNUum2zZ0gselS"
+EXPO_PUBLIC_MAPBOX_TOKEN = "pk.eyJ1IjoieW91c2FmNDMiLCJhIjoiY21xaGtvZTcyMGJ2ODJxcW51ZWdxcmt5cSJ9.wtxo5gOcB5PB7kljp-INNw"
