@@ -79,6 +79,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 - WebView on web (browser preview) shows a placeholder message since WebView isn't supported in browser.
 - Never use `Link asChild` with style arrays — crashes on web. Use `router.push()` instead.
 - All Haptics calls must be guarded with `if (Platform.OS !== "web")` — Haptics API doesn't exist on web.
+- `babel-preset-expo` MUST be an explicit `devDependency` in `artifacts/ks-solar/package.json` (pinned `~54.0.11` for SDK 54). `babel.config.js` references it directly, but it is only a transitive dep of `expo`; under pnpm's strict node-linker it is NOT symlinked at the app level, so Metro fails with `Cannot find module 'babel-preset-expo'` — breaking web bundling, Expo Go, AND the EAS JS bundle step. If a future `pnpm install`/merge drops it, re-add with `pnpm --filter @workspace/ks-solar add -D babel-preset-expo@~54.0.11`.
 
 ## EAS Android build (standalone APK)
 
