@@ -167,3 +167,18 @@ overrides:
 allowBuilds:
   dtrace-provider: true
   esbuild: true
+
+# react-native-worklets' Babel plugin (loaded by babel-preset-expo during the
+# Expo web export at deploy time) does `require("@babel/...")` for these modules
+# but does not declare them, so under pnpm's strict linking they are only
+# resolvable via fragile peer-variant hoisting — which is non-deterministic
+# across install environments and intermittently breaks the production build
+# ("Cannot find module '@babel/traverse'"). Declaring them here forces pnpm to
+# hard-link them into react-native-worklets' own node_modules in every install.
+packageExtensions:
+  react-native-worklets:
+    dependencies:
+      '@babel/core': ^7.25.2
+      '@babel/generator': ^7.25.0
+      '@babel/traverse': ^7.25.0
+      '@babel/types': ^7.25.0
