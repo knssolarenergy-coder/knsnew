@@ -67,6 +67,10 @@ export function LiveMapSection() {
   const [selectedTechId, setSelectedTechId] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState(TECH_COLORS[0]);
   const [showTrail, setShowTrail] = useState(false);
+  const [isSatellite, setIsSatellite] = useState(false);
+  const mapStyleURL = isSatellite
+    ? "mapbox://styles/mapbox/satellite-streets-v12"
+    : "mapbox://styles/mapbox/light-v11";
 
   const today = useMemo(() => new Date().toISOString().split("T")[0], []);
 
@@ -221,7 +225,7 @@ export function LiveMapSection() {
     <View style={{ flex: 1 }}>
       <MapboxGL.MapView
         style={StyleSheet.absoluteFill}
-        styleURL="mapbox://styles/mapbox/light-v11"
+        styleURL={mapStyleURL}
         logoEnabled={false}
         attributionEnabled={false}
         compassEnabled
@@ -293,6 +297,18 @@ export function LiveMapSection() {
           <ActivityIndicator size="large" color="#0891B2" />
         </View>
       )}
+
+      {/* ── Satellite / Street toggle ── */}
+      <TouchableOpacity
+        style={[s.styleToggle, { backgroundColor: isSatellite ? "rgba(15,23,42,0.82)" : "rgba(255,255,255,0.92)" }]}
+        onPress={() => setIsSatellite((v) => !v)}
+        activeOpacity={0.85}
+      >
+        <Feather name={isSatellite ? "map" : "layers"} size={14} color={isSatellite ? "#ffffff" : "#0F172A"} />
+        <Text style={[s.styleToggleText, { color: isSatellite ? "#ffffff" : "#0F172A" }]}>
+          {isSatellite ? "Street" : "Satellite"}
+        </Text>
+      </TouchableOpacity>
 
       {/* ── Top overlays ── */}
       <View style={s.topOverlay} pointerEvents="none">
@@ -439,6 +455,9 @@ const s = StyleSheet.create({
   setupSub: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 22 },
   // Loading
   loadingOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.6)" },
+  // Style toggle (satellite / street)
+  styleToggle: { position: "absolute", top: Platform.OS === "ios" ? 160 : 116, right: 12, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(255,255,255,0.92)", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4 },
+  styleToggleText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   // Top overlays
   topOverlay: { position: "absolute", top: Platform.OS === "ios" ? 56 : 12, left: 12, right: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
   countBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(0,0,0,0.70)", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
