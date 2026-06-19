@@ -27,7 +27,12 @@ async function withTechnicianIds(rows: (typeof complaints.$inferSelect)[]): Prom
     if (!map[row.complaintId]) map[row.complaintId] = [];
     map[row.complaintId].push(row.technicianId);
   }
-  return rows.map((r) => ({ ...r, technicianIds: map[r.id] ?? [] }));
+  return rows.map((r) => {
+    const ids = map[r.id];
+    if (ids && ids.length > 0) return { ...r, technicianIds: ids };
+    // Fall back to legacy single-assignment column
+    return { ...r, technicianIds: r.technicianId ? [r.technicianId] : [] };
+  });
 }
 
 router.get("/complaints", requireAuth, async (req, res) => {

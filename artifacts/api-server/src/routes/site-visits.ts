@@ -35,11 +35,16 @@ async function withTechnicianData(rows: (typeof siteVisits.$inferSelect)[]): Pro
     techIdsMap[row.siteVisitId].push(row.technicianId);
   }
 
-  return rows.map((r) => ({
-    ...r,
-    technicianName: r.assignedTo ? (nameMap[r.assignedTo] ?? null) : null,
-    technicianIds: techIdsMap[r.id] ?? [],
-  }));
+  return rows.map((r) => {
+    const ids = techIdsMap[r.id];
+    const hasJoinIds = ids && ids.length > 0;
+    return {
+      ...r,
+      technicianName: r.assignedTo ? (nameMap[r.assignedTo] ?? null) : null,
+      // Fall back to legacy assignedTo column when join table has no rows yet
+      technicianIds: hasJoinIds ? ids : (r.assignedTo ? [r.assignedTo] : []),
+    };
+  });
 }
 
 // GET /site-visits — admin: all; technician: assigned to them
