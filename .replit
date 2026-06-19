@@ -45,16 +45,20 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd artifacts/ks-solar && EXPO_PACKAGER_PROXY_URL=https://$REPLIT_EXPO_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN EXPO_PUBLIC_REPL_ID=$REPL_ID REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN PORT=25115 EXPO_PUBLIC_MAPBOX_TOKEN=pk.eyJ1IjoieW91c2FmNDMiLCJhIjoiY21xaGtvZTcyMGJ2ODJxcW51ZWdxcmt5cSJ9.wtxo5gOcB5PB7kljp-INNw npx expo start --localhost --port 25115"
-waitForPort = 25115
+args = "cd artifacts/ks-solar && EXPO_PACKAGER_PROXY_URL=https://$REPLIT_EXPO_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN EXPO_PUBLIC_REPL_ID=$REPL_ID REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN PORT=5000 EXPO_PUBLIC_MAPBOX_TOKEN=pk.eyJ1IjoieW91c2FmNDMiLCJhIjoiY21xaGtvZTcyMGJ2ODJxcW51ZWdxcmt5cSJ9.wtxo5gOcB5PB7kljp-INNw node /home/runner/workspace/node_modules/.pnpm/@expo+cli@54.0.23_expo-router@6.0.24_expo@54.0.35_graphql@16.8.1_react-native@0.81.5_@b_7a1c8b885ab85dbff0396108d122d203/node_modules/@expo/cli/build/bin/cli start --localhost --port 5000"
+waitForPort = 5000
 
 [agent]
-stack = "PNPM_WORKSPACE"
+stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
 
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 60000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
 
 [[ports]]
 localPort = 8080
