@@ -129,6 +129,23 @@ export function LiveMapSection() {
     };
   }, [trail]);
 
+  // GeoJSON FeatureCollection — one Point per ping for CircleLayer dots
+  const trailPoints = useMemo(() => {
+    if (!trail || trail.length === 0) return null;
+    const features = trail
+      .filter((p) => !isNaN(parseFloat(p.latitude)) && !isNaN(parseFloat(p.longitude)))
+      .map((p) => ({
+        type: "Feature" as const,
+        geometry: {
+          type: "Point" as const,
+          coordinates: [parseFloat(p.longitude), parseFloat(p.latitude)] as [number, number],
+        },
+        properties: {},
+      }));
+    if (features.length === 0) return null;
+    return { type: "FeatureCollection" as const, features };
+  }, [trail]);
+
   // ─── Camera: initial fit (only once) ─────────────────────────────────────
   useEffect(() => {
     if (hasFittedRef.current || locs.length === 0) return;
@@ -244,8 +261,8 @@ export function LiveMapSection() {
             <MapboxGL.LineLayer
               id="trail-line"
               style={{
-                lineColor: selectedColor,
-                lineWidth: 4,
+                lineColor: "#3B82F6",
+                lineWidth: 3,
                 lineCap: "round",
                 lineJoin: "round",
                 lineOpacity: 0.9,
@@ -254,24 +271,20 @@ export function LiveMapSection() {
           </MapboxGL.ShapeSource>
         )}
 
-        {/* Trail start dot */}
-        {trailLine && trailLine.geometry.coordinates.length > 0 && (
-          <MapboxGL.PointAnnotation
-            id="trail-start"
-            coordinate={trailLine.geometry.coordinates[0]}
-          >
-            <View style={[s.trailDot, { backgroundColor: colors.mutedForeground }]} />
-          </MapboxGL.PointAnnotation>
-        )}
-
-        {/* Trail end dot (latest position) */}
-        {trailLine && trailLine.geometry.coordinates.length > 1 && (
-          <MapboxGL.PointAnnotation
-            id="trail-end"
-            coordinate={trailLine.geometry.coordinates[trailLine.geometry.coordinates.length - 1]}
-          >
-            <View style={[s.trailDot, { backgroundColor: "#10B981", width: 14, height: 14, borderRadius: 7 }]} />
-          </MapboxGL.PointAnnotation>
+        {/* Trail ping dots — one circle per ping point */}
+        {trailPoints && (
+          <MapboxGL.ShapeSource id="trail-points-src" shape={trailPoints}>
+            <MapboxGL.CircleLayer
+              id="trail-circles"
+              style={{
+                circleRadius: 4,
+                circleColor: "#3B82F6",
+                circleOpacity: 0.85,
+                circleStrokeWidth: 1.5,
+                circleStrokeColor: "#ffffff",
+              }}
+            />
+          </MapboxGL.ShapeSource>
         )}
 
         {/* Technician pins */}
