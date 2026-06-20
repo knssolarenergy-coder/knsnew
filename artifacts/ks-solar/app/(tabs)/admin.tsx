@@ -666,6 +666,12 @@ function AdminContent() {
   const [timezone, setTimezone] = useState("Asia/Karachi");
   const [savingTimezone, setSavingTimezone] = useState(false);
 
+  // Settings state — App Update
+  const [latestAppVersion, setLatestAppVersion] = useState("");
+  const [apkDownloadUrl, setApkDownloadUrl] = useState("");
+  const [savingLatestAppVersion, setSavingLatestAppVersion] = useState(false);
+  const [savingApkDownloadUrl, setSavingApkDownloadUrl] = useState(false);
+
   // Reports state
   const [reportTechId, setReportTechId] = useState("");
   const [reportFrom, setReportFrom] = useState(() => {
@@ -950,6 +956,7 @@ function AdminContent() {
         setSavingReferralEnabled(false); setSavingReferralPoints(false); setSavingReferralMoney(false);
         setSavingCheckinDeadline(false); setSavingShiftEnd(false); setSavingAbsentAlertTime(false);
         setSavingTimezone(false);
+        setSavingLatestAppVersion(false); setSavingApkDownloadUrl(false);
         refetchSettings();
         Alert.alert("Saved", "Setting updated successfully.");
       },
@@ -964,6 +971,7 @@ function AdminContent() {
         setSavingReferralEnabled(false); setSavingReferralPoints(false); setSavingReferralMoney(false);
         setSavingCheckinDeadline(false); setSavingShiftEnd(false); setSavingAbsentAlertTime(false);
         setSavingTimezone(false);
+        setSavingLatestAppVersion(false); setSavingApkDownloadUrl(false);
         Alert.alert("Error", "Could not update setting");
       },
     },
@@ -1154,6 +1162,8 @@ function AdminContent() {
       setShiftEnd(settingsData.find((s) => s.key === "attendance_shift_end")?.value ?? "18:00");
       setAbsentAlertTime(settingsData.find((s) => s.key === "attendance_absent_alert_time")?.value ?? "09:00");
       setTimezone(settingsData.find((s) => s.key === "timezone")?.value ?? "Asia/Karachi");
+      setLatestAppVersion(settingsData.find((s) => s.key === "latest_version")?.value ?? "");
+      setApkDownloadUrl(settingsData.find((s) => s.key === "apk_download_url")?.value ?? "");
     }
   }, [settingsData]);
 
@@ -3759,6 +3769,54 @@ function AdminContent() {
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* App Update */}
+          <Text style={[styles.settingsSection, { color: "#22C55E", marginTop: 8 }]}>App Update</Text>
+          <Text style={[styles.settingsHint, { color: colors.mutedForeground }]}>
+            Set the latest APK version and download URL. Users with an older installed version will see an update prompt on launch.
+          </Text>
+          {[
+            {
+              label: "Latest Version", icon: "tag" as const, placeholder: "e.g. 1.0.1",
+              val: latestAppVersion, setVal: setLatestAppVersion,
+              saving: savingLatestAppVersion, setSaving: setSavingLatestAppVersion,
+              key: "latest_version",
+            },
+            {
+              label: "APK Download URL", icon: "link" as const, placeholder: "https://example.com/app.apk",
+              val: apkDownloadUrl, setVal: setApkDownloadUrl,
+              saving: savingApkDownloadUrl, setSaving: setSavingApkDownloadUrl,
+              key: "apk_download_url",
+            },
+          ].map(({ label, icon, placeholder, val, setVal, saving, setSaving, key }) => (
+            <View key={key} style={[styles.settingCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={[styles.settingIconWrap, { backgroundColor: "#22C55E18" }]}>
+                <Feather name={icon} size={18} color="#22C55E" />
+              </View>
+              <View style={{ flex: 1, gap: 8 }}>
+                <Text style={[styles.settingLabel, { color: colors.foreground }]}>{label}</Text>
+                <TextInput
+                  style={[styles.settingInput, { backgroundColor: colors.muted, color: colors.foreground, borderColor: colors.border }]}
+                  value={val}
+                  onChangeText={setVal}
+                  placeholder={placeholder}
+                  placeholderTextColor={colors.mutedForeground}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity
+                  style={[styles.saveBtn, { backgroundColor: saving ? colors.mutedForeground : "#22C55E" }]}
+                  onPress={() => { setSaving(true); updateSetting({ key, data: { value: val.trim() } }); }}
+                  disabled={saving}
+                  activeOpacity={0.85}
+                >
+                  {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : (
+                    <><Feather name="save" size={15} color="#FFFFFF" /><Text style={styles.saveBtnText}>Save {label}</Text></>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
 
           {/* Admin Password Change */}
           <Text style={[styles.settingsSection, { color: "#EF4444", marginTop: 8 }]}>Admin Password</Text>

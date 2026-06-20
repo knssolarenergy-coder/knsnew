@@ -6,10 +6,11 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { setBaseUrl } from "@workspace/api-client-react";
+import { setBaseUrl, useGetSettings } from "@workspace/api-client-react";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useRef } from "react";
+import Constants from "expo-constants";
+import React, { useEffect, useRef, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -18,6 +19,7 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ConfirmProvider } from "@/components/ConfirmModal";
 import { LocationEnforcementOverlay } from "@/components/LocationEnforcementOverlay";
+import { UpdateModal } from "@/components/UpdateModal";
 import { registerForPushNotificationsAsync } from "@/hooks/usePushNotifications";
 import { useRouter } from "expo-router";
 // Register background location task at app startup — wrapped in try/catch so any
@@ -48,6 +50,46 @@ const queryClient = new QueryClient({
 });
 
 const API_BASE = `${_apiOrigin}/api`;
+
+function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function UpdateChecker() {
+  const [showUpdate, setShowUpdate] = useState(false);
+  const [latestVersion, setLatestVersion] = useState("");
+  const [apkUrl, setApkUrl] = useState("");
+  const { data: settingsData } = useGetSettings();
+
+  const currentVersion = Constants.expoConfig?.version ?? "0.0.0";
+
+  useEffect(() => {
+    if (!settingsData) return;
+    const latest = settingsData.find((s) => s.key === "latest_version")?.value ?? "";
+    const url = settingsData.find((s) => s.key === "apk_download_url")?.value ?? "";
+    if (latest && url && compareVersions(latest, currentVersion) > 0) {
+      setLatestVersion(latest);
+      setApkUrl(url);
+      setShowUpdate(true);
+    }
+  }, [settingsData, currentVersion]);
+
+  return (
+    <UpdateModal
+      visible={showUpdate}
+      currentVersion={currentVersion}
+      latestVersion={latestVersion}
+      apkUrl={apkUrl}
+      onDismiss={() => setShowUpdate(false)}
+    />
+  );
+}
 
 function PushManager() {
   const { user, token } = useAuth();
@@ -128,6 +170,7 @@ export default function RootLayout() {
                 <ConfirmProvider>
                   <PushManager />
                   <NotificationObserver />
+                  <UpdateChecker />
                   <LocationEnforcementOverlay />
                   <Stack screenOptions={{ headerShown: false }}>
                     <Stack.Screen name="(tabs)" />
