@@ -40,8 +40,9 @@ async function seedAdmin() {
       });
       logger.info({ email: adminEmail }, "Admin user created");
     } else {
+      const passwordHash = await bcrypt.hash(adminPassword, 10);
       await db.update(users)
-        .set({ isAdmin: true, isMaster: true, status: "approved" })
+        .set({ isAdmin: true, isMaster: true, status: "approved", passwordHash })
         .where(eq(users.email, adminEmail));
       logger.info({ email: adminEmail }, "Admin user refreshed");
     }
