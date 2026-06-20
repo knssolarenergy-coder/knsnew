@@ -98,6 +98,7 @@ function photoUrl(objectPath: string | null | undefined): string | null {
 }
 
 async function uploadPhoto(uri: string): Promise<string> {
+  if (uri.startsWith("data:")) return uri;
   const res = await fetch(uri);
   const blob = await res.blob();
   return new Promise<string>((resolve, reject) => {
@@ -355,8 +356,9 @@ export default function TechnicianScreen() {
     if (Platform.OS === "web") {
       result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
-        quality: 0.7,
+        quality: 0.4,
         allowsEditing: false,
+        base64: true,
       });
     } else {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -366,13 +368,18 @@ export default function TechnicianScreen() {
       }
       result = await ImagePicker.launchCameraAsync({
         mediaTypes: ["images"],
-        quality: 0.7,
+        quality: 0.4,
         allowsEditing: false,
+        base64: true,
       });
     }
     if (!result.canceled && result.assets[0]) {
-      if (type === "selfie") setSelfieUri(result.assets[0].uri);
-      else setSitePhotoUri(result.assets[0].uri);
+      const asset = result.assets[0];
+      const dataUrl = asset.base64
+        ? `data:image/jpeg;base64,${asset.base64}`
+        : asset.uri;
+      if (type === "selfie") setSelfieUri(dataUrl);
+      else setSitePhotoUri(dataUrl);
     }
   }
 

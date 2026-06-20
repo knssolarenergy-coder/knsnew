@@ -2,3 +2,4 @@
 - [Drizzle push/migrate drift](drizzle-push-migrate-drift.md) — migrations that formalize push-created tables must be idempotent (IF NOT EXISTS + guarded constraints) or startup migration fails.
 - [EAS build git block](eas-build-git-block.md) — run `eas build` with `EAS_NO_VCS=1` (+ `--no-wait`); the sandbox blocks the git ops EAS uses to archive the project.
 - [pnpm deploy babel non-determinism](pnpm-deploy-babel-nondeterminism.md) — intermittent `Cannot find module '@babel/...'` in Expo prod build; fix via pnpm `packageExtensions`, not app devDep.
+- [Base64 photo upload body limit](base64-photo-limit.md) — sending photos as base64 in JSON body hits Express 100kb default; must set limit:"25mb".
