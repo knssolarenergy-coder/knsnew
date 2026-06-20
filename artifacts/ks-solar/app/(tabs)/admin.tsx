@@ -993,7 +993,7 @@ function AdminContent() {
         hapticNotify(Haptics.NotificationFeedbackType.Success);
         refetchBookings();
       },
-      onError: () => Alert.alert("Error", "Could not update technician assignment"),
+      onError: (err: any) => Alert.alert("Error", err?.data?.error ?? err?.message ?? "Could not update technician assignment"),
       onSettled: (_data, _err, vars) => {
         setBookingTechAssigning(prev => ({ ...prev, [vars.id]: false }));
       },
@@ -1047,7 +1047,7 @@ function AdminContent() {
         hapticNotify(Haptics.NotificationFeedbackType.Success);
         refetchComplaints();
       },
-      onError: () => Alert.alert("Error", "Could not update technician assignment"),
+      onError: (err: any) => Alert.alert("Error", err?.data?.error ?? err?.message ?? "Could not update technician assignment"),
       onSettled: (_data, _err, vars) => {
         setComplaintTechAssigning(prev => ({ ...prev, [vars.id]: false }));
       },
@@ -1060,7 +1060,7 @@ function AdminContent() {
         hapticNotify(Haptics.NotificationFeedbackType.Success);
         refetchSiteVisits();
       },
-      onError: () => Alert.alert("Error", "Could not update technician assignment"),
+      onError: (err: any) => Alert.alert("Error", err?.data?.error ?? err?.message ?? "Could not update technician assignment"),
       onSettled: (_data, _err, vars) => {
         setSvTechAssigning(prev => ({ ...prev, [vars.id]: false }));
       },
@@ -1485,7 +1485,7 @@ function AdminContent() {
                       <Text style={[styles.cardTitle, { color: colors.foreground }]}>{item.customerName}</Text>
                       <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
                         {item.city} · {item.panelCount} panels · {item.preferredDate}
-                        {item.technicianIds.length > 0 ? ` · ${item.technicianIds.length} tech${item.technicianIds.length > 1 ? "s" : ""}` : ""}
+                        {(item.technicianIds ?? []).length > 0 ? ` · ${(item.technicianIds ?? []).length} tech${(item.technicianIds ?? []).length > 1 ? "s" : ""}` : ""}
                       </Text>
                     </View>
                     <View style={{ alignItems: "flex-end", gap: 6 }}>
@@ -1511,27 +1511,27 @@ function AdminContent() {
                       {item.notes ? <InfoRow icon="file-text" label="Notes" value={item.notes} colors={colors} /> : null}
                       <InfoRow icon="calendar" label="Booked On" value={formatDate(item.createdAt)} colors={colors} />
                       <Text style={[styles.sectionLabel, { color: colors.secondary, marginTop: 8 }]}>
-                        Assign Technicians{item.technicianIds.length > 0 ? ` (${item.technicianIds.length} assigned)` : ""}
+                        Assign Technicians{(item.technicianIds ?? []).length > 0 ? ` (${(item.technicianIds ?? []).length} assigned)` : ""}
                       </Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }} contentContainerStyle={styles.techPickerRow}>
                         {bookingTechAssigning[item.id]
                           ? <ActivityIndicator size="small" color={colors.secondary} style={{ marginRight: 8 }} />
                           : null}
                         <TouchableOpacity
-                          style={[styles.techPill, { backgroundColor: item.technicianIds.length === 0 ? "#EF444418" : colors.muted, borderColor: item.technicianIds.length === 0 ? "#EF4444" : colors.border }]}
+                          style={[styles.techPill, { backgroundColor: (item.technicianIds ?? []).length === 0 ? "#EF444418" : colors.muted, borderColor: (item.technicianIds ?? []).length === 0 ? "#EF4444" : colors.border }]}
                           onPress={() => clearBookingTechnicians(item.id)}
                           disabled={bookingTechAssigning[item.id]}
                         >
-                          <Feather name="x" size={11} color={item.technicianIds.length === 0 ? "#EF4444" : colors.mutedForeground} />
-                          <Text style={[styles.techPillText, { color: item.technicianIds.length === 0 ? "#EF4444" : colors.mutedForeground }]}>Clear All</Text>
+                          <Feather name="x" size={11} color={(item.technicianIds ?? []).length === 0 ? "#EF4444" : colors.mutedForeground} />
+                          <Text style={[styles.techPillText, { color: (item.technicianIds ?? []).length === 0 ? "#EF4444" : colors.mutedForeground }]}>Clear All</Text>
                         </TouchableOpacity>
                         {(technicians ?? []).filter(t => t.status === "active").map((t) => {
-                          const isAssigned = item.technicianIds.includes(t.id);
+                          const isAssigned = (item.technicianIds ?? []).includes(t.id);
                           return (
                             <TouchableOpacity
                               key={t.id}
                               style={[styles.techPill, { backgroundColor: isAssigned ? colors.secondary : colors.muted, borderColor: isAssigned ? colors.secondary : colors.border }]}
-                              onPress={() => toggleTechForBooking(item.id, t.id, item.technicianIds)}
+                              onPress={() => toggleTechForBooking(item.id, t.id, item.technicianIds ?? [])}
                               disabled={bookingTechAssigning[item.id]}
                             >
                               <Feather name={isAssigned ? "check" : "user"} size={11} color={isAssigned ? "#FFFFFF" : colors.mutedForeground} />
@@ -1623,27 +1623,27 @@ function AdminContent() {
                         <Text style={[styles.messageText, { color: colors.foreground }]}>{item.message}</Text>
                       </View>
                       <Text style={[styles.sectionLabel, { color: colors.secondary, marginTop: 8 }]}>
-                        Assign Technicians{item.technicianIds.length > 0 ? ` (${item.technicianIds.length} assigned)` : ""}
+                        Assign Technicians{(item.technicianIds ?? []).length > 0 ? ` (${(item.technicianIds ?? []).length} assigned)` : ""}
                       </Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }} contentContainerStyle={styles.techPickerRow}>
                         {complaintTechAssigning[item.id]
                           ? <ActivityIndicator size="small" color={colors.secondary} style={{ marginRight: 8 }} />
                           : null}
                         <TouchableOpacity
-                          style={[styles.techPill, { backgroundColor: item.technicianIds.length === 0 ? "#EF444418" : colors.muted, borderColor: item.technicianIds.length === 0 ? "#EF4444" : colors.border }]}
+                          style={[styles.techPill, { backgroundColor: (item.technicianIds ?? []).length === 0 ? "#EF444418" : colors.muted, borderColor: (item.technicianIds ?? []).length === 0 ? "#EF4444" : colors.border }]}
                           onPress={() => clearComplaintTechnicians(item.id)}
                           disabled={complaintTechAssigning[item.id]}
                         >
-                          <Feather name="x" size={11} color={item.technicianIds.length === 0 ? "#EF4444" : colors.mutedForeground} />
-                          <Text style={[styles.techPillText, { color: item.technicianIds.length === 0 ? "#EF4444" : colors.mutedForeground }]}>Clear All</Text>
+                          <Feather name="x" size={11} color={(item.technicianIds ?? []).length === 0 ? "#EF4444" : colors.mutedForeground} />
+                          <Text style={[styles.techPillText, { color: (item.technicianIds ?? []).length === 0 ? "#EF4444" : colors.mutedForeground }]}>Clear All</Text>
                         </TouchableOpacity>
                         {(technicians ?? []).filter(t => t.status === "active").map((t) => {
-                          const isAssigned = item.technicianIds.includes(t.id);
+                          const isAssigned = (item.technicianIds ?? []).includes(t.id);
                           return (
                             <TouchableOpacity
                               key={t.id}
                               style={[styles.techPill, { backgroundColor: isAssigned ? colors.secondary : colors.muted, borderColor: isAssigned ? colors.secondary : colors.border }]}
-                              onPress={() => toggleTechForComplaint(item.id, t.id, item.technicianIds)}
+                              onPress={() => toggleTechForComplaint(item.id, t.id, item.technicianIds ?? [])}
                               disabled={complaintTechAssigning[item.id]}
                             >
                               <Feather name={isAssigned ? "check" : "user"} size={11} color={isAssigned ? "#FFFFFF" : colors.mutedForeground} />
@@ -2363,12 +2363,12 @@ function AdminContent() {
               const sc = SITE_STATUS_COLORS[item.status] ?? "#64748B";
               const statusLabel = SITE_STATUS_LABELS[item.status] ?? item.status;
               const expanded = siteExpandedId === item.id;
-              const assignedTechs = (technicians ?? []).filter(t => item.technicianIds.includes(t.id));
-              const pickedIds: string[] = siteTechPick[item.id] ?? item.technicianIds;
+              const assignedTechs = (technicians ?? []).filter(t => (item.technicianIds ?? []).includes(t.id));
+              const pickedIds: string[] = siteTechPick[item.id] ?? (item.technicianIds ?? []);
               return (
                 <TouchableOpacity
                   style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => { hapticSelection(); setSiteExpandedId(prev => prev === item.id ? null : item.id); setSiteTechPick(prev => ({ ...prev, [item.id]: prev[item.id] ?? [...item.technicianIds] })); }}
+                  onPress={() => { hapticSelection(); setSiteExpandedId(prev => prev === item.id ? null : item.id); setSiteTechPick(prev => ({ ...prev, [item.id]: prev[item.id] ?? [...(item.technicianIds ?? [])] })); }}
                   activeOpacity={0.9}
                 >
                   <View style={styles.cardTop}>
@@ -2410,7 +2410,7 @@ function AdminContent() {
                               <TouchableOpacity
                                 key={tech.id}
                                 style={[styles.techPill, picked && styles.techPillActive, { borderColor: picked ? colors.secondary : colors.border }]}
-                                onPress={e => { e.stopPropagation?.(); hapticSelection(); setSiteTechPick(prev => { const cur = prev[item.id] ?? [...item.technicianIds]; return { ...prev, [item.id]: picked ? cur.filter(id => id !== tech.id) : [...cur, tech.id] }; }); }}
+                                onPress={e => { e.stopPropagation?.(); hapticSelection(); setSiteTechPick(prev => { const cur = prev[item.id] ?? [...(item.technicianIds ?? [])]; return { ...prev, [item.id]: picked ? cur.filter(id => id !== tech.id) : [...cur, tech.id] }; }); }}
                                 activeOpacity={0.7}
                               >
                                 <View style={[styles.techPillDot, { backgroundColor: picked ? colors.secondary : colors.mutedForeground }]} />
@@ -2628,7 +2628,7 @@ function AdminContent() {
                         multiline
                       />
                       <Text style={[styles.formLabel, { color: colors.mutedForeground }]}>
-                        Assign Technicians{item.technicianIds.length > 0 ? ` (${item.technicianIds.length})` : ""}
+                        Assign Technicians{(item.technicianIds ?? []).length > 0 ? ` (${(item.technicianIds ?? []).length})` : ""}
                       </Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
                         <View style={{ flexDirection: "row", gap: 6 }}>
@@ -2638,16 +2638,16 @@ function AdminContent() {
                           <TouchableOpacity
                             onPress={() => clearSiteVisitTechnicians(item.id)}
                             disabled={svTechAssigning[item.id]}
-                            style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, backgroundColor: item.technicianIds.length === 0 ? "#EF444418" : colors.background, borderWidth: 1, borderColor: item.technicianIds.length === 0 ? "#EF4444" : colors.border }}
+                            style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, backgroundColor: (item.technicianIds ?? []).length === 0 ? "#EF444418" : colors.background, borderWidth: 1, borderColor: (item.technicianIds ?? []).length === 0 ? "#EF4444" : colors.border }}
                           >
-                            <Text style={{ color: item.technicianIds.length === 0 ? "#EF4444" : colors.mutedForeground, fontSize: 11 }}>Clear All</Text>
+                            <Text style={{ color: (item.technicianIds ?? []).length === 0 ? "#EF4444" : colors.mutedForeground, fontSize: 11 }}>Clear All</Text>
                           </TouchableOpacity>
                           {(technicians ?? []).filter(t => t.status === "active").map(t => {
-                            const isAssigned = item.technicianIds.includes(t.id);
+                            const isAssigned = (item.technicianIds ?? []).includes(t.id);
                             return (
                               <TouchableOpacity
                                 key={t.id}
-                                onPress={() => toggleTechForSiteVisit(item.id, t.id, item.technicianIds)}
+                                onPress={() => toggleTechForSiteVisit(item.id, t.id, item.technicianIds ?? [])}
                                 disabled={svTechAssigning[item.id]}
                                 style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, backgroundColor: isAssigned ? "#7C3AED" : colors.background, borderWidth: 1, borderColor: isAssigned ? "#7C3AED" : colors.border }}
                               >
