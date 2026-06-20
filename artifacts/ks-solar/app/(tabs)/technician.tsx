@@ -1,6 +1,5 @@
 import { Feather } from "@expo/vector-icons";
 import {
-  requestUploadUrl,
   useCheckIn,
   useCheckOut,
   useGetBookings,
@@ -101,17 +100,15 @@ function photoUrl(objectPath: string | null | undefined): string | null {
 async function uploadPhoto(uri: string): Promise<string> {
   const res = await fetch(uri);
   const blob = await res.blob();
-  const { uploadURL, objectPath } = await requestUploadUrl({
-    name: `photo-${Date.now()}.jpg`,
-    size: blob.size,
-    contentType: "image/jpeg",
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("Failed to read photo"));
+    };
+    reader.onerror = () => reject(new Error("Failed to read photo"));
+    reader.readAsDataURL(blob);
   });
-  await fetch(uploadURL, {
-    method: "PUT",
-    body: blob,
-    headers: { "Content-Type": "image/jpeg" },
-  });
-  return objectPath;
 }
 
 export default function TechnicianScreen() {
