@@ -385,8 +385,12 @@ export default function TechnicianScreen() {
       let selfieUrl: string | undefined;
       let sitePhotoUrl: string | undefined;
 
-      if (selfieUri) selfieUrl = await uploadPhoto(selfieUri);
-      if (sitePhotoUri) sitePhotoUrl = await uploadPhoto(sitePhotoUri);
+      if (selfieUri) {
+        try { selfieUrl = await uploadPhoto(selfieUri); } catch { /* proceed without photo */ }
+      }
+      if (sitePhotoUri) {
+        try { sitePhotoUrl = await uploadPhoto(sitePhotoUri); } catch { /* proceed without photo */ }
+      }
 
       doCheckIn({
         data: {
