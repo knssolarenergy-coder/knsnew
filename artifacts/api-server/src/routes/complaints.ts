@@ -358,34 +358,60 @@ router.patch("/complaints/:id", requireAuth, async (req, res) => {
 
 // PATCH /complaints/:id/technicians — assign multiple technicians (admin only)
 router.patch("/complaints/:id/technicians", requireAdmin, async (req, res) => {
+  const complaintId = String(req.params.id);
   try {
     const { technicianIds } = req.body;
     if (!Array.isArray(technicianIds)) {
       res.status(400).json({ error: "technicianIds must be an array" }); return;
     }
-    const complaintId = String(req.params.id);
+    const sanitizedIds: string[] = technicianIds.map((id: unknown) => String(id)).filter(Boolean);
+
+    req.log.info({ complaintId, technicianIds: sanitizedIds }, "Assigning complaint technicians");
+
     const [complaint] = await db.select().from(complaints).where(eq(complaints.id, complaintId));
-    if (!complaint) { res.status(404).json({ error: "Complaint not found" }); return; }
+    if (!complaint) {
+      req.log.warn({ complaintId }, "Complaint not found for technician assignment");
+      res.status(404).json({ error: "Complaint not found" }); return;
+    }
+
+    // Validate each technician ID exists in the users table before any writes
+    if (sanitizedIds.length > 0) {
+      const existingUsers = await db.select({ id: users.id }).from(users).where(inArray(users.id, sanitizedIds));
+      const foundIds = new Set(existingUsers.map(u => u.id));
+      const missing = sanitizedIds.filter(id => !foundIds.has(id));
+      if (missing.length > 0) {
+        req.log.warn({ complaintId, missingIds: missing }, "Technician IDs not found in users table");
+        res.status(422).json({ error: `Technician(s) not found: ${missing.join(", ")}` }); return;
+      }
+    }
+
+    // Clear existing assignments then insert new ones
     await db.delete(complaintTechnicians).where(eq(complaintTechnicians.complaintId, complaintId));
-    if (technicianIds.length > 0) {
+    req.log.info({ complaintId }, "Cleared existing complaint technicians");
+
+    if (sanitizedIds.length > 0) {
       await db.insert(complaintTechnicians).values(
-        technicianIds.map((techId: string) => ({
+        sanitizedIds.map((techId) => ({
           id: generateId(),
           complaintId,
-          technicianId: String(techId),
+          technicianId: techId,
         }))
       );
+      req.log.info({ complaintId, count: sanitizedIds.length }, "Inserted complaint technicians");
     }
+
     // Also update legacy technicianId column (first assigned or null)
     await db.update(complaints)
-      .set({ technicianId: technicianIds.length > 0 ? String(technicianIds[0]) : null })
+      .set({ technicianId: sanitizedIds.length > 0 ? sanitizedIds[0] : null })
       .where(eq(complaints.id, complaintId));
+
     const [updatedComplaint] = await db.select().from(complaints).where(eq(complaints.id, complaintId));
     const [result] = await withTechnicianIds([updatedComplaint]);
     res.json(result);
-    req.log.info({ complaintId, technicianIds }, "Complaint technicians updated");
+    req.log.info({ complaintId, technicianIds: sanitizedIds }, "Complaint technicians updated successfully");
+
     // Notify each newly assigned technician
-    for (const techId of technicianIds as string[]) {
+    for (const techId of sanitizedIds) {
       notifyTechnician(techId, {
         pushTitle: "Complaint Assigned ⚠️",
         pushBody: `Subject: ${complaint.subject}`,
@@ -397,9 +423,19 @@ router.patch("/complaints/:id/technicians", requireAdmin, async (req, res) => {
         ),
       }).catch(() => {});
     }
-  } catch (err) {
-    req.log.error({ err }, "Failed to assign complaint technicians");
-    res.status(500).json({ error: "Internal server error" });
+  } catch (err: any) {
+    // Surface specific DB errors with actionable messages
+    const pgCode: string | undefined = err?.code;
+    if (pgCode === "23503") {
+      req.log.error({ err, complaintId }, "Foreign key violation assigning complaint technicians");
+      res.status(422).json({ error: "One or more technician IDs are invalid or do not exist" }); return;
+    }
+    if (pgCode === "42P01") {
+      req.log.error({ err, complaintId }, "Missing DB table for complaint technician assignment");
+      res.status(500).json({ error: "Database schema is out of date — please contact support" }); return;
+    }
+    req.log.error({ err, complaintId, pgCode }, "Failed to assign complaint technicians");
+    res.status(500).json({ error: "Could not update technician assignment" });
   }
 });
 
