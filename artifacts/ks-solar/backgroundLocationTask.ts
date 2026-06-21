@@ -62,6 +62,7 @@ export async function setCurrentUserId(userId: string): Promise<void> {
     }
     await SecureStore.setItemAsync(USER_ID_KEY, userId);
   } catch {}
+  await setAuthUserIdFlag(userId);
 }
 
 /**
@@ -73,6 +74,7 @@ export async function clearCurrentUserId(): Promise<void> {
     await SecureStore.deleteItemAsync(USER_ID_KEY);
   } catch {}
   await setTrackingFlag(false);
+  await setAuthUserIdFlag(null);
 }
 
 /**
@@ -89,6 +91,47 @@ async function setTrackingFlag(active: boolean): Promise<void> {
     const flagPath = `${FileSystem.documentDirectory ?? ""}ks_tracking_active`;
     if (active) {
       await FileSystem.writeAsStringAsync(flagPath, "1");
+    } else {
+      const info = await FileSystem.getInfoAsync(flagPath);
+      if (info.exists) {
+        await FileSystem.deleteAsync(flagPath, { idempotent: true });
+      }
+    }
+  } catch {}
+}
+
+/**
+ * Mirror the authentication token *presence* into a plain file so the
+ * Android BootReceiver can verify a user is logged in without needing to
+ * decrypt expo-secure-store's EncryptedSharedPreferences.
+ *
+ * Call this whenever the token is stored or cleared (login / logout /
+ * token invalidation). The actual token value is never written to disk —
+ * only a "1" presence marker.
+ *
+ * Only runs on Android.
+ */
+export async function mirrorAuthToken(hasToken: boolean): Promise<void> {
+  if (Platform.OS !== "android") return;
+  try {
+    const flagPath = `${FileSystem.documentDirectory ?? ""}ks_auth_token`;
+    if (hasToken) {
+      await FileSystem.writeAsStringAsync(flagPath, "1");
+    } else {
+      const info = await FileSystem.getInfoAsync(flagPath);
+      if (info.exists) {
+        await FileSystem.deleteAsync(flagPath, { idempotent: true });
+      }
+    }
+  } catch {}
+}
+
+async function setAuthUserIdFlag(userId: string | null): Promise<void> {
+  if (Platform.OS !== "android") return;
+  try {
+    const flagPath = `${FileSystem.documentDirectory ?? ""}ks_auth_user_id`;
+    if (userId !== null) {
+      await FileSystem.writeAsStringAsync(flagPath, userId);
     } else {
       const info = await FileSystem.getInfoAsync(flagPath);
       if (info.exists) {

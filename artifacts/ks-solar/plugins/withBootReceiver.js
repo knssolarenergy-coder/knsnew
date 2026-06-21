@@ -24,7 +24,14 @@ import android.content.Intent;
 import java.io.File;
 
 public class KSSolarBootReceiver extends BroadcastReceiver {
-    private static final String FLAG_FILE = "ks_tracking_active";
+    // All three files must exist for the receiver to start the location service.
+    // They are written by the JS layer (backgroundLocationTask.ts / AuthContext.tsx):
+    //   ks_tracking_active — set by startAlwaysOnTracking(), cleared by stopAlwaysOnTracking()
+    //   ks_auth_token      — set by storeToken(token) in AuthContext, cleared on logout
+    //   ks_auth_user_id    — set by setCurrentUserId(id), cleared by clearCurrentUserId()
+    private static final String FLAG_TRACKING = "ks_tracking_active";
+    private static final String FLAG_TOKEN    = "ks_auth_token";
+    private static final String FLAG_USER_ID  = "ks_auth_user_id";
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -35,10 +42,13 @@ public class KSSolarBootReceiver extends BroadcastReceiver {
             return;
         }
 
-        // Only restart if a technician was actively tracking before the reboot.
-        // The JS layer writes this flag file when startAlwaysOnTracking() succeeds.
-        File flagFile = new File(context.getFilesDir(), FLAG_FILE);
-        if (!flagFile.exists()) return;
+        // Verify a technician was actively tracking AND is still authenticated.
+        // All three flags must be present — this prevents the service from starting
+        // after a logout even if ks_tracking_active was not cleaned up properly.
+        File filesDir = context.getFilesDir();
+        if (!new File(filesDir, FLAG_TRACKING).exists()) return;
+        if (!new File(filesDir, FLAG_TOKEN).exists())    return;
+        if (!new File(filesDir, FLAG_USER_ID).exists())  return;
 
         // Start Expo Location's foreground service. It reads its task configuration
         // from SharedPreferences written by expo-task-manager and resumes location

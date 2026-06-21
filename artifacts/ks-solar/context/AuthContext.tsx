@@ -2,6 +2,7 @@ import { setAuthTokenGetter } from "@workspace/api-client-react";
 import * as SecureStore from "expo-secure-store";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Platform } from "react-native";
+import { mirrorAuthToken } from "../backgroundLocationTask";
 
 export interface UpdateProfileData {
   name: string;
@@ -65,6 +66,8 @@ async function storeToken(token: string | null) {
   }
   if (token) await SecureStore.setItemAsync(TOKEN_KEY, token);
   else await SecureStore.deleteItemAsync(TOKEN_KEY);
+  // Mirror token presence so KSSolarBootReceiver can check auth state from Java.
+  await mirrorAuthToken(token !== null);
 }
 
 async function loadToken(): Promise<string | null> {
