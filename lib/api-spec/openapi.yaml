@@ -3252,7 +3252,7 @@ components:
 
     TechnicianLiveLocation:
       type: object
-      required: [technicianId, name, latitude, longitude, recordedAt, status]
+      required: [technicianId, name, latitude, longitude, status]
       properties:
         technicianId:
           type: string
@@ -3260,13 +3260,17 @@ components:
           type: string
         latitude:
           type: string
+          description: "Empty string when no location recorded yet"
         longitude:
           type: string
+          description: "Empty string when no location recorded yet"
         address:
           type: string
           nullable: true
         recordedAt:
           type: string
+          nullable: true
+          description: "Null when technician has never sent a location ping"
         attendanceId:
           type: string
           nullable: true
@@ -3275,7 +3279,8 @@ components:
           nullable: true
         status:
           type: string
-          description: "Technician field status (e.g. checked-in, online)"
+          enum: [active, away, offline]
+          description: "active = pinged within 30 min; away = 30 min–8 h; offline = 8 h+ or never pinged"
 
     DailyAttendanceStat:
       type: object

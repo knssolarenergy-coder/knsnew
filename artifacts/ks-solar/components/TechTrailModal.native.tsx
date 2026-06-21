@@ -390,7 +390,7 @@ export function TechTrailModal({ visible, onClose, techId, techName }: Props) {
                       }]} />
                       <Text style={s.dotLabel}>
                         {isToday && liveLocation
-                          ? `Now · ${minutesAgo(liveLocation.recordedAt)}`
+                          ? `Now · ${liveLocation.recordedAt ? minutesAgo(liveLocation.recordedAt) : "live"}`
                           : lastPoint ? `Last · ${formatTime(lastPoint.recordedAt)}` : ""}
                       </Text>
                     </View>
@@ -491,7 +491,7 @@ export function TechTrailModal({ visible, onClose, techId, techName }: Props) {
           ) : null}
           {isToday && liveLocation ? (
             <View style={s.stat}>
-              <Text style={[s.statNum, { color: "#10B981" }]}>{minutesAgo(liveLocation.recordedAt)}</Text>
+              <Text style={[s.statNum, { color: "#10B981" }]}>{liveLocation.recordedAt ? minutesAgo(liveLocation.recordedAt) : "Live"}</Text>
               <Text style={[s.statLabel, { color: colors.mutedForeground }]}>Updated</Text>
             </View>
           ) : null}

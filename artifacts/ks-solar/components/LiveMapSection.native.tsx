@@ -43,6 +43,12 @@ function minutesAgo(iso: string) {
   return `${Math.floor(diff / 60)}h ${diff % 60}m ago`;
 }
 
+function statusColor(status: string): string {
+  if (status === "active") return "#10B981";
+  if (status === "away") return "#F59E0B";
+  return "#94A3B8";
+}
+
 // Stable pin component — memoised to prevent Mapbox PointAnnotation flicker
 const TechPin = React.memo(function TechPin({
   name, color, selected,
@@ -105,12 +111,21 @@ export function LiveMapSection() {
     },
   );
 
+  // All technicians returned by API (including those with no location yet)
+  const allLocs = useMemo(() => locations ?? [], [locations]);
+
+  // Only those with valid coordinates — used for map pins
   const locs = useMemo(
     () =>
-      (locations ?? []).filter(
+      allLocs.filter(
         (l) => !isNaN(parseFloat(l.latitude)) && !isNaN(parseFloat(l.longitude)),
       ),
-    [locations],
+    [allLocs],
+  );
+
+  const activeLocs = useMemo(
+    () => allLocs.filter((l) => l.status === "active"),
+    [allLocs],
   );
 
   // GeoJSON [lng, lat] for Mapbox (note: opposite of react-native-maps)
@@ -313,11 +328,11 @@ export function LiveMapSection() {
 
       {/* ── Top overlays ── */}
       <View style={s.topOverlay} pointerEvents="none">
-        {locs.length > 0 && (
+        {allLocs.length > 0 && (
           <View style={s.countBadge}>
             <View style={s.countDot} />
             <Text style={s.countText}>
-              {locs.length} Online
+              {activeLocs.length > 0 ? `${activeLocs.length} Active` : `${allLocs.length} Techs`}
             </Text>
           </View>
         )}
@@ -328,12 +343,12 @@ export function LiveMapSection() {
       </View>
 
       {/* ── Empty state ── */}
-      {!isLoading && locs.length === 0 && (
+      {!isLoading && allLocs.length === 0 && (
         <View style={s.emptyOverlay} pointerEvents="none">
           <View style={s.emptyCard}>
             <Feather name="radio" size={28} color="#64748B" />
-            <Text style={s.emptyTitle}>No Active Technicians</Text>
-            <Text style={s.emptySub}>Technicians appear here after check-in.</Text>
+            <Text style={s.emptyTitle}>No Technicians Found</Text>
+            <Text style={s.emptySub}>No approved technicians in the system yet.</Text>
           </View>
         </View>
       )}
@@ -350,22 +365,24 @@ export function LiveMapSection() {
         </Text>
       </TouchableOpacity>
 
-      {/* ── Bottom: tech card strip ── */}
-      {!selectedTechId && locs.length > 0 && (
+      {/* ── Bottom: tech card strip (all technicians, not just those with coords) ── */}
+      {!selectedTechId && allLocs.length > 0 && (
         <View style={s.cardStripWrapper}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={s.cardStripContent}
           >
-            {locs.map((loc, idx) => {
+            {allLocs.map((loc, idx) => {
               const pinColor = TECH_COLORS[idx % TECH_COLORS.length];
+              const sColor = statusColor(loc.status);
+              const hasCoords = !isNaN(parseFloat(loc.latitude)) && !isNaN(parseFloat(loc.longitude));
               return (
                 <TouchableOpacity
                   key={loc.technicianId}
                   style={[s.techCard, { borderColor: pinColor }]}
-                  onPress={() => handleTechSelect(loc.technicianId, pinColor)}
-                  activeOpacity={0.85}
+                  onPress={() => hasCoords ? handleTechSelect(loc.technicianId, pinColor) : undefined}
+                  activeOpacity={hasCoords ? 0.85 : 1}
                 >
                   <View style={[s.techCardAccent, { backgroundColor: pinColor }]} />
                   <View style={s.techCardBody}>
@@ -377,13 +394,17 @@ export function LiveMapSection() {
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={s.techCardName} numberOfLines={1}>{loc.name}</Text>
                       <View style={s.techCardRow}>
-                        <View style={[s.statusDot, { backgroundColor: "#10B981" }]} />
-                        <Text style={s.techCardSub}>{minutesAgo(loc.recordedAt)}</Text>
+                        <View style={[s.statusDot, { backgroundColor: sColor }]} />
+                        <Text style={[s.techCardSub, { color: sColor }]}>
+                          {loc.status === "active" ? "Active" : loc.status === "away" ? "Away" : "Offline"}
+                        </Text>
                       </View>
-                      {loc.checkInAt ? <Text style={s.techCardIn}>In {formatTime(loc.checkInAt)}</Text> : null}
+                      {loc.recordedAt
+                        ? <Text style={s.techCardIn}>{minutesAgo(loc.recordedAt)}</Text>
+                        : <Text style={s.techCardIn}>No location yet</Text>}
                     </View>
                   </View>
-                  <Text style={[s.techCardTrailHint, { color: pinColor }]}>Tap for trail →</Text>
+                  {hasCoords && <Text style={[s.techCardTrailHint, { color: pinColor }]}>Tap for trail →</Text>}
                 </TouchableOpacity>
               );
             })}
@@ -404,7 +425,7 @@ export function LiveMapSection() {
                 </Text>
               </View>
               <Text style={[s.trailPanelSub, { color: colors.mutedForeground }]}>
-                {selectedLoc.checkInAt ? `In ${formatTime(selectedLoc.checkInAt)} · ` : ""}{minutesAgo(selectedLoc.recordedAt)}
+                {selectedLoc.checkInAt ? `In ${formatTime(selectedLoc.checkInAt)} · ` : ""}{selectedLoc.recordedAt ? minutesAgo(selectedLoc.recordedAt) : "No location yet"}
               </Text>
             </View>
             <TouchableOpacity

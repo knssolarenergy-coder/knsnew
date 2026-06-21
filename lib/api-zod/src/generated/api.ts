@@ -1607,13 +1607,13 @@ export const UpsertTechnicianLocationResponse = zod.object({
 export const GetTechnicianLiveLocationsResponseItem = zod.object({
   "technicianId": zod.string(),
   "name": zod.string(),
-  "latitude": zod.string(),
-  "longitude": zod.string(),
+  "latitude": zod.string().describe('Empty string when no location recorded yet'),
+  "longitude": zod.string().describe('Empty string when no location recorded yet'),
   "address": zod.string().nullish(),
-  "recordedAt": zod.string(),
+  "recordedAt": zod.string().nullish().describe('Null when technician has never sent a location ping'),
   "attendanceId": zod.string().nullish(),
   "checkInAt": zod.string().nullish(),
-  "status": zod.string().describe('Technician field status (e.g. checked-in, online)')
+  "status": zod.enum(['active', 'away', 'offline']).describe('active = pinged within 30 min; away = 30 min–8 h; offline = 8 h+ or never pinged')
 })
 export const GetTechnicianLiveLocationsResponse = zod.array(GetTechnicianLiveLocationsResponseItem)
 

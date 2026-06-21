@@ -789,17 +789,32 @@ export interface LocationTrailPoint {
   receivedAt: string;
 }
 
+/**
+ * active = pinged within 30 min; away = 30 min–8 h; offline = 8 h+ or never pinged
+ */
+export type TechnicianLiveLocationStatus = typeof TechnicianLiveLocationStatus[keyof typeof TechnicianLiveLocationStatus];
+
+
+export const TechnicianLiveLocationStatus = {
+  active: 'active',
+  away: 'away',
+  offline: 'offline',
+} as const;
+
 export interface TechnicianLiveLocation {
   technicianId: string;
   name: string;
+  /** Empty string when no location recorded yet */
   latitude: string;
+  /** Empty string when no location recorded yet */
   longitude: string;
   address?: string | null;
-  recordedAt: string;
+  /** Null when technician has never sent a location ping */
+  recordedAt?: string | null;
   attendanceId?: string | null;
   checkInAt?: string | null;
-  /** Technician field status (e.g. checked-in, online) */
-  status: string;
+  /** active = pinged within 30 min; away = 30 min–8 h; offline = 8 h+ or never pinged */
+  status: TechnicianLiveLocationStatus;
 }
 
 export interface DailyAttendanceStat {

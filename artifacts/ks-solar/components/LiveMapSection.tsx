@@ -167,7 +167,7 @@ export function LiveMapSection() {
       color: TECH_COLORS[idx % TECH_COLORS.length],
       status: loc.status,
       checkInAt: loc.checkInAt,
-      recordedAt: loc.recordedAt,
+      recordedAt: loc.recordedAt ?? "",
       address: loc.address ?? "",
     }));
   }
@@ -273,7 +273,7 @@ export function LiveMapSection() {
                       </View>
                       <View style={[s.chip, { backgroundColor: "#10B98115" }]}>
                         <Feather name="radio" size={10} color="#10B981" />
-                        <Text style={[s.chipText, { color: "#10B981" }]}>{minutesAgo(loc.recordedAt)}</Text>
+                        <Text style={[s.chipText, { color: "#10B981" }]}>{loc.recordedAt ? minutesAgo(loc.recordedAt) : "No ping yet"}</Text>
                       </View>
                       {!isNaN(lat) && !isNaN(lng) && (
                         <View style={[s.chip, { backgroundColor: colors.muted }]}>

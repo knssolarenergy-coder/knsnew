@@ -41,6 +41,18 @@ function minutesAgo(iso: string) {
   return `${h}h ${diff % 60}m ago`;
 }
 
+function statusColor(status: string): string {
+  if (status === "active") return "#10B981";
+  if (status === "away") return "#F59E0B";
+  return "#94A3B8";
+}
+
+function statusLabel(status: string): string {
+  if (status === "active") return "Active";
+  if (status === "away") return "Away";
+  return "Offline";
+}
+
 interface LocEntry {
   technicianId: string;
   name: string;
@@ -120,13 +132,17 @@ export function LiveMapModal({ visible, onClose }: Props) {
     return () => clearInterval(id);
   }, [visible]);
 
+  // All technicians (including those with no location yet) — used for the list
+  const allLocs: LocEntry[] = useMemo(() => (locations ?? []) as LocEntry[], [locations]);
+
+  // Only those with valid coords — used for map pins
   const locs: LocEntry[] = useMemo(
-    () => (locations ?? []).filter(l => {
+    () => allLocs.filter(l => {
       const lat = parseFloat(l.latitude);
       const lng = parseFloat(l.longitude);
       return !isNaN(lat) && !isNaN(lng);
     }),
-    [locations],
+    [allLocs],
   );
 
   // Fit camera once when first locations arrive
@@ -184,7 +200,7 @@ export function LiveMapModal({ visible, onClose }: Props) {
           <View style={{ flex: 1 }}>
             <Text style={[s.headerTitle, { color: colors.foreground }]}>Live Technician Map</Text>
             <Text style={[s.headerSub, { color: colors.mutedForeground }]}>
-              {locs.length === 0 ? "No technicians checked in" : `${locs.length} active · refreshes every 15s`}
+              {allLocs.length === 0 ? "No technicians found" : `${allLocs.length} technician${allLocs.length > 1 ? "s" : ""} · refreshes every 15s`}
             </Text>
           </View>
           {isRefetching && <ActivityIndicator size="small" color="#0891B2" style={{ marginRight: 8 }} />}
@@ -248,7 +264,7 @@ export function LiveMapModal({ visible, onClose }: Props) {
 
         {/* Tech list */}
         <FlatList
-          data={locs}
+          data={allLocs}
           keyExtractor={item => item.technicianId}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={s.listContent}
@@ -256,9 +272,9 @@ export function LiveMapModal({ visible, onClose }: Props) {
             !isLoading ? (
               <View style={[s.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <Feather name="radio" size={32} color={colors.mutedForeground} />
-                <Text style={[s.emptyTitle, { color: colors.foreground }]}>No Active Technicians</Text>
+                <Text style={[s.emptyTitle, { color: colors.foreground }]}>No Technicians Found</Text>
                 <Text style={[s.emptySub, { color: colors.mutedForeground }]}>
-                  Technicians appear here after check-in and first location ping.
+                  No approved technicians in the system yet.
                 </Text>
                 <TouchableOpacity
                   onPress={() => refetch()}
@@ -272,9 +288,9 @@ export function LiveMapModal({ visible, onClose }: Props) {
             ) : null
           }
           ListHeaderComponent={
-            locs.length > 0 ? (
+            allLocs.length > 0 ? (
               <Text style={[s.sectionLabel, { color: colors.mutedForeground }]}>
-                {locs.length} Technician{locs.length > 1 ? "s" : ""} Online
+                {allLocs.length} Technician{allLocs.length > 1 ? "s" : ""}
               </Text>
             ) : null
           }
@@ -282,7 +298,9 @@ export function LiveMapModal({ visible, onClose }: Props) {
             const pinColor = TECH_COLORS[idx % TECH_COLORS.length];
             const lat = parseFloat(loc.latitude);
             const lng = parseFloat(loc.longitude);
+            const hasCoords = !isNaN(lat) && !isNaN(lng);
             const isSelected = selectedTechId === loc.technicianId;
+            const sColor = statusColor(loc.status);
             return (
               <TouchableOpacity
                 style={[s.card, {
@@ -290,8 +308,8 @@ export function LiveMapModal({ visible, onClose }: Props) {
                   borderColor: isSelected ? pinColor : colors.border,
                   borderWidth: isSelected ? 1.5 : 1,
                 }]}
-                onPress={() => handlePinSelect(loc.technicianId)}
-                activeOpacity={0.8}
+                onPress={() => hasCoords ? handlePinSelect(loc.technicianId) : undefined}
+                activeOpacity={hasCoords ? 0.8 : 1}
               >
                 <View style={{ height: 3, backgroundColor: pinColor, borderTopLeftRadius: 14, borderTopRightRadius: 14 }} />
                 <View style={s.cardBody}>
@@ -303,15 +321,19 @@ export function LiveMapModal({ visible, onClose }: Props) {
                   <View style={{ flex: 1, gap: 4 }}>
                     <Text style={[s.techName, { color: colors.foreground }]}>{loc.name}</Text>
                     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                      <View style={[s.chip, { backgroundColor: colors.muted }]}>
-                        <Feather name="log-in" size={10} color={colors.mutedForeground} />
-                        {loc.checkInAt ? <Text style={[s.chipText, { color: colors.mutedForeground }]}>In {formatTime(loc.checkInAt)}</Text> : null}
+                      {loc.checkInAt && (
+                        <View style={[s.chip, { backgroundColor: colors.muted }]}>
+                          <Feather name="log-in" size={10} color={colors.mutedForeground} />
+                          <Text style={[s.chipText, { color: colors.mutedForeground }]}>In {formatTime(loc.checkInAt)}</Text>
+                        </View>
+                      )}
+                      <View style={[s.chip, { backgroundColor: sColor + "15" }]}>
+                        <Feather name="radio" size={10} color={sColor} />
+                        <Text style={[s.chipText, { color: sColor }]}>
+                          {loc.recordedAt ? minutesAgo(loc.recordedAt) : "No ping yet"}
+                        </Text>
                       </View>
-                      <View style={[s.chip, { backgroundColor: "#10B98115" }]}>
-                        <Feather name="radio" size={10} color="#10B981" />
-                        <Text style={[s.chipText, { color: "#10B981" }]}>{minutesAgo(loc.recordedAt)}</Text>
-                      </View>
-                      {!isNaN(lat) && !isNaN(lng) && (
+                      {hasCoords && (
                         <View style={[s.chip, { backgroundColor: colors.muted }]}>
                           <Feather name="crosshair" size={10} color={colors.mutedForeground} />
                           <Text style={[s.chipText, { color: colors.mutedForeground }]}>{lat.toFixed(4)}, {lng.toFixed(4)}</Text>
@@ -324,10 +346,10 @@ export function LiveMapModal({ visible, onClose }: Props) {
                       </Text>
                     ) : null}
                   </View>
-                  <View style={[s.activeBadge, { backgroundColor: "#10B98115", borderColor: "#10B98144" }]}>
-                    <View style={s.activeDot} />
-                    <Text style={s.activeBadgeText}>
-                      {loc.status.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                  <View style={[s.activeBadge, { backgroundColor: sColor + "15", borderColor: sColor + "44" }]}>
+                    <View style={[s.activeDot, { backgroundColor: sColor }]} />
+                    <Text style={[s.activeBadgeText, { color: sColor }]}>
+                      {statusLabel(loc.status)}
                     </Text>
                   </View>
                 </View>

@@ -85,6 +85,7 @@ export * from './siteVisitStatus';
 export * from './successResponse';
 export * from './technician';
 export * from './technicianLiveLocation';
+export * from './technicianLiveLocationStatus';
 export * from './technicianReport';
 export * from './technicianStatus';
 export * from './updateComplaintRequest';

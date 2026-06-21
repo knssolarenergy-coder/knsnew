@@ -602,30 +602,31 @@ router.post("/technician-locations", requireTechnician, async (req, res) => {
   res.json({ ok: true });
 });
 
-// GET /technician-locations — admin: latest live location for all technicians with a recent ping
+// GET /technician-locations — admin: all approved technicians with live status (no cutoff)
 router.get("/technician-locations", requireAdmin, async (req, res) => {
   const now = new Date();
-  // Show any technician who has pinged in the last 4 hours
-  const cutoff = new Date(now.getTime() - 4 * 60 * 60 * 1000);
 
-  const latestLocs = await db
-    .select()
-    .from(technicianLocations)
-    .where(gte(technicianLocations.updatedAt, cutoff));
+  // 1. Fetch ALL approved technicians
+  const allTechs = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(and(eq(users.role, "technician"), eq(users.status, "approved")));
 
-  if (latestLocs.length === 0) {
+  if (allTechs.length === 0) {
     res.json([]);
     return;
   }
 
-  const techIds = latestLocs.map(l => l.technicianId);
-  const techUsers = await db
-    .select({ id: users.id, name: users.name })
-    .from(users)
-    .where(inArray(users.id, techIds));
-  const nameById = new Map(techUsers.map(u => [u.id, u.name]));
+  const techIds = allTechs.map(t => t.id);
 
-  // Also check for active attendance (checked in today) to show status
+  // 2. Get latest known location for each technician (if any)
+  const latestLocs = await db
+    .select()
+    .from(technicianLocations)
+    .where(inArray(technicianLocations.technicianId, techIds));
+  const locByTech = new Map(latestLocs.map(l => [l.technicianId, l]));
+
+  // 3. Active attendance today (checked in, not checked out yet)
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const activeRows = await db
     .select({ id: attendance.id, technicianId: attendance.technicianId, checkInAt: attendance.checkInAt })
@@ -633,18 +634,33 @@ router.get("/technician-locations", requireAdmin, async (req, res) => {
     .where(and(gte(attendance.checkInAt, todayStart), isNull(attendance.checkOutAt)));
   const attByTech = new Map(activeRows.map(r => [r.technicianId, r]));
 
-  const result = latestLocs.map(loc => {
-    const att = attByTech.get(loc.technicianId);
+  const ACTIVE_MS = 30 * 60 * 1000;      // 30 minutes → "active"
+  const AWAY_MS   = 8 * 60 * 60 * 1000;  // 8 hours    → "away"
+
+  const result = allTechs.map(tech => {
+    const loc = locByTech.get(tech.id);
+    const att = attByTech.get(tech.id);
+
+    let status: "active" | "away" | "offline";
+    if (!loc) {
+      status = "offline";
+    } else {
+      const age = now.getTime() - loc.updatedAt.getTime();
+      if (age <= ACTIVE_MS) status = "active";
+      else if (age <= AWAY_MS) status = "away";
+      else status = "offline";
+    }
+
     return {
-      technicianId: loc.technicianId,
-      name: nameById.get(loc.technicianId) ?? "Unknown",
-      latitude: loc.latitude,
-      longitude: loc.longitude,
-      address: loc.address,
-      recordedAt: loc.updatedAt.toISOString(),
-      attendanceId: loc.attendanceId ?? null,
+      technicianId: tech.id,
+      name: tech.name,
+      latitude: loc ? loc.latitude : "",
+      longitude: loc ? loc.longitude : "",
+      address: loc?.address ?? null,
+      recordedAt: loc ? loc.updatedAt.toISOString() : null,
+      attendanceId: loc?.attendanceId ?? null,
       checkInAt: att?.checkInAt.toISOString() ?? null,
-      status: att ? "checked-in" : "online",
+      status,
     };
   });
 
