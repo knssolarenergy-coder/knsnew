@@ -14,7 +14,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { Platform } from "react-native";
+import { Alert, Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ConfirmProvider } from "@/components/ConfirmModal";
@@ -23,11 +24,15 @@ import { UpdateModal } from "@/components/UpdateModal";
 import { registerForPushNotificationsAsync } from "@/hooks/usePushNotifications";
 import { useRouter } from "expo-router";
 import {
+  clearCurrentUserId,
   flushOfflineQueue,
   sendForegroundPing,
+  setCurrentUserId,
   startAlwaysOnTracking,
   startAppStateFlushListener,
+  stopAlwaysOnTracking,
 } from "@/backgroundLocationTask";
+
 // Register background location task at app startup — wrapped in try/catch so any
 // task-manager init failure never crashes the whole app.
 if (Platform.OS !== "web") {
@@ -56,6 +61,8 @@ const queryClient = new QueryClient({
 });
 
 const API_BASE = `${_apiOrigin}/api`;
+
+const BG_PERM_SHOWN_KEY = "ks_solar_bg_perm_shown";
 
 function compareVersions(a: string, b: string): number {
   const pa = a.split(".").map(Number);
@@ -117,14 +124,50 @@ function LocationTracker() {
   const lastUserId = useRef<string | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const appStateUnsubRef = useRef<(() => void) | null>(null);
+  const netInfoUnsubRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (Platform.OS === "web") return;
-    if (!user || user.role !== "technician") return;
+
+    if (!user || user.role !== "technician") {
+      if (lastUserId.current) {
+        stopAlwaysOnTracking().catch(() => {});
+        clearCurrentUserId().catch(() => {});
+        if (pingIntervalRef.current) { clearInterval(pingIntervalRef.current); pingIntervalRef.current = null; }
+        if (appStateUnsubRef.current) { appStateUnsubRef.current(); appStateUnsubRef.current = null; }
+        if (netInfoUnsubRef.current) { netInfoUnsubRef.current(); netInfoUnsubRef.current = null; }
+        lastUserId.current = null;
+      }
+      return;
+    }
+
     if (lastUserId.current === user.id) return;
     lastUserId.current = user.id;
 
-    startAlwaysOnTracking().catch(() => {});
+    // Tag current user for queue attribution; clears a previous different user's queued pings
+    setCurrentUserId(user.id).catch(() => {});
+
+    // One-time explanation before requesting background permission
+    AsyncStorage.getItem(BG_PERM_SHOWN_KEY)
+      .then((shown) => {
+        if (!shown) {
+          Alert.alert(
+            "Background Location",
+            "K&S Solar will track your location continuously while you are logged in so the office can see where technicians are at all times.",
+            [{
+              text: "OK",
+              onPress: () => {
+                AsyncStorage.setItem(BG_PERM_SHOWN_KEY, "1").catch(() => {});
+                startAlwaysOnTracking().catch(() => {});
+              },
+            }]
+          );
+        } else {
+          startAlwaysOnTracking().catch(() => {});
+        }
+      })
+      .catch(() => { startAlwaysOnTracking().catch(() => {}); });
+
     flushOfflineQueue().catch(() => {});
     sendForegroundPing().catch(() => {});
 
@@ -134,10 +177,33 @@ function LocationTracker() {
 
     appStateUnsubRef.current = startAppStateFlushListener();
 
+    // NetInfo: flush queue immediately when connectivity is restored
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const NetInfo = require("@react-native-community/netinfo") as {
+        addEventListener: (
+          cb: (s: { isConnected: boolean | null }) => void
+        ) => () => void;
+      };
+      let wasOffline = false;
+      netInfoUnsubRef.current = NetInfo.addEventListener((state) => {
+        if (state.isConnected && wasOffline) {
+          flushOfflineQueue().catch(() => {});
+          sendForegroundPing().catch(() => {});
+        }
+        wasOffline = state.isConnected === false;
+      });
+    } catch {
+      // NetInfo unavailable — AppState-based flush still active
+    }
+
     return () => {
-      if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-      if (appStateUnsubRef.current) appStateUnsubRef.current();
+      if (pingIntervalRef.current) { clearInterval(pingIntervalRef.current); pingIntervalRef.current = null; }
+      if (appStateUnsubRef.current) { appStateUnsubRef.current(); appStateUnsubRef.current = null; }
+      if (netInfoUnsubRef.current) { netInfoUnsubRef.current(); netInfoUnsubRef.current = null; }
       lastUserId.current = null;
+      stopAlwaysOnTracking().catch(() => {});
+      clearCurrentUserId().catch(() => {});
     };
   }, [user?.id, user?.role]);
 

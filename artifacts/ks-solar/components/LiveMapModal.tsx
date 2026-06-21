@@ -41,7 +41,7 @@ interface LocEntry {
   latitude: string;
   longitude: string;
   status: string;
-  checkInAt: string;
+  checkInAt?: string | null;
   recordedAt: string;
   address?: string | null;
 }
@@ -310,9 +310,11 @@ export function LiveMapModal({ visible, onClose }: Props) {
                           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
                             <View style={[s.chip, { backgroundColor: colors.muted }]}>
                               <Feather name="log-in" size={10} color={colors.mutedForeground} />
-                              <Text style={[s.chipText, { color: colors.mutedForeground }]}>
-                                In {formatTime(loc.checkInAt)}
-                              </Text>
+                              {loc.checkInAt ? (
+                                <Text style={[s.chipText, { color: colors.mutedForeground }]}>
+                                  In {formatTime(loc.checkInAt)}
+                                </Text>
+                              ) : null}
                             </View>
                             <View style={[s.chip, { backgroundColor: "#10B98115" }]}>
                               <Feather name="radio" size={10} color="#10B981" />

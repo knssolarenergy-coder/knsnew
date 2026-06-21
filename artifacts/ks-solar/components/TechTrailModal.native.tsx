@@ -4,11 +4,12 @@ import MapboxGL, { Camera as MapboxCamera } from "@rnmapbox/maps";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   Modal,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -49,12 +50,20 @@ function minutesAgo(iso: string) {
   return `${h}h ${diff % 60}m ago`;
 }
 
+function isValidDateStr(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(s);
+  return !isNaN(d.getTime());
+}
+
 interface Props {
   visible: boolean;
   onClose: () => void;
   techId: string;
   techName: string;
 }
+
+type ViewMode = "map" | "timeline";
 
 export function TechTrailModal({ visible, onClose, techId, techName }: Props) {
   const colors = useColors();
@@ -63,6 +72,10 @@ export function TechTrailModal({ visible, onClose, techId, techName }: Props) {
   const hasFittedRef = useRef(false);
 
   const [date, setDate] = useState(todayString);
+  const [dateInput, setDateInput] = useState(todayString);
+  const [viewMode, setViewMode] = useState<ViewMode>("map");
+  const [selectedPoint, setSelectedPoint] = useState<{ time: string; index: number } | null>(null);
+
   const isToday = date === todayString();
 
   const {
@@ -111,22 +124,44 @@ export function TechTrailModal({ visible, onClose, techId, techName }: Props) {
     };
   }, [trailPoints]);
 
+  const trailPointsGeoJSON = useMemo(() => {
+    if (trailPoints.length === 0) return null;
+    return {
+      type: "FeatureCollection" as const,
+      features: trailPoints.map((p, i) => ({
+        type: "Feature" as const,
+        geometry: {
+          type: "Point" as const,
+          coordinates: [parseFloat(p.longitude), parseFloat(p.latitude)],
+        },
+        properties: { time: p.recordedAt, index: i },
+      })),
+    };
+  }, [trailPoints]);
+
   const firstPoint = trailPoints[0];
   const lastPoint = trailPoints[trailPoints.length - 1];
-  const currentPoint = liveLocation ?? (isToday ? lastPoint ?? null : lastPoint ?? null);
+  const currentPoint = liveLocation ?? (lastPoint ?? null);
 
   useEffect(() => {
     if (!visible) {
       hasFittedRef.current = false;
+      setSelectedPoint(null);
       return;
     }
     hasFittedRef.current = false;
+    setSelectedPoint(null);
     refetchTrail();
     if (isToday) refetchLive();
   }, [visible, date]);
 
   useEffect(() => {
-    if (!visible || isToday) return;
+    setDateInput(date);
+  }, [date]);
+
+  // Live refresh only when viewing today
+  useEffect(() => {
+    if (!visible || !isToday) return;
     const id = setInterval(() => { refetchTrail(); refetchLive(); }, 30_000);
     return () => clearInterval(id);
   }, [visible, isToday]);
@@ -164,6 +199,24 @@ export function TechTrailModal({ visible, onClose, techId, techName }: Props) {
     }
   }, [date]);
 
+  const commitDateInput = useCallback(() => {
+    const trimmed = dateInput.trim();
+    if (isValidDateStr(trimmed) && trimmed !== date) {
+      setDate(trimmed);
+      hasFittedRef.current = false;
+    } else {
+      setDateInput(date);
+    }
+  }, [dateInput, date]);
+
+  const handleTrailPointPress = useCallback((event: Parameters<NonNullable<React.ComponentProps<typeof MapboxGL.ShapeSource>["onPress"]>>[0]) => {
+    const feature = event?.features?.[0];
+    const props = feature?.properties as { time?: string; index?: number } | null | undefined;
+    if (props?.time !== undefined && props.index !== undefined) {
+      setSelectedPoint({ time: props.time, index: props.index });
+    }
+  }, []);
+
   const hasToken = !!process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
 
   return (
@@ -171,10 +224,7 @@ export function TechTrailModal({ visible, onClose, techId, techName }: Props) {
       <View style={[s.root, { backgroundColor: colors.background }]}>
 
         {/* Header */}
-        <View style={[s.header, {
-          paddingTop: insets.top + 10,
-          backgroundColor: "#0891B2",
-        }]}>
+        <View style={[s.header, { paddingTop: insets.top + 10, backgroundColor: "#0891B2" }]}>
           <TouchableOpacity onPress={onClose} style={s.closeBtn} activeOpacity={0.7}>
             <Feather name="arrow-left" size={20} color="white" />
           </TouchableOpacity>
@@ -186,14 +236,22 @@ export function TechTrailModal({ visible, onClose, techId, techName }: Props) {
                 : "No pings for this date"}
             </Text>
           </View>
-          {(refetchingTrail) && (
-            <ActivityIndicator size="small" color="white" style={{ marginRight: 8 }} />
+          {/* View mode toggle */}
+          <TouchableOpacity
+            onPress={() => setViewMode(viewMode === "map" ? "timeline" : "map")}
+            style={s.modeBtn}
+            activeOpacity={0.8}
+          >
+            <Feather name={viewMode === "map" ? "list" : "map"} size={16} color="white" />
+          </TouchableOpacity>
+          {refetchingTrail && (
+            <ActivityIndicator size="small" color="white" style={{ marginRight: 4 }} />
           )}
         </View>
 
         {/* Date picker bar */}
         <View style={[s.datePicker, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.datePickerContent}>
+          <View style={s.datePickerContent}>
             {[
               { label: "Today", offset: 0 },
               { label: "Yesterday", offset: -1 },
@@ -212,7 +270,7 @@ export function TechTrailModal({ visible, onClose, techId, techName }: Props) {
                     backgroundColor: active ? "#0891B2" : colors.muted,
                     borderColor: active ? "#0891B2" : colors.border,
                   }]}
-                  onPress={() => { goDate(btn.offset); }}
+                  onPress={() => goDate(btn.offset)}
                   activeOpacity={0.7}
                 >
                   <Text style={[s.dateBtnText, { color: active ? "white" : colors.mutedForeground }]}>
@@ -222,110 +280,196 @@ export function TechTrailModal({ visible, onClose, techId, techName }: Props) {
               );
             })}
             <View style={s.dateSep} />
-            <Text style={[s.dateDisplay, { color: colors.foreground }]}>{date}</Text>
-          </ScrollView>
+            <TextInput
+              style={[s.dateInput, { color: colors.foreground, borderColor: colors.border }]}
+              value={dateInput}
+              onChangeText={setDateInput}
+              onSubmitEditing={commitDateInput}
+              onBlur={commitDateInput}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType={Platform.OS === "ios" ? "numbers-and-punctuation" : "default"}
+              returnKeyType="done"
+              maxLength={10}
+            />
+          </View>
         </View>
 
-        {/* Map */}
-        <View style={s.mapWrapper}>
-          {!hasToken ? (
-            <View style={[s.center, { backgroundColor: colors.muted }]}>
-              <Feather name="map" size={32} color={colors.mutedForeground} />
-              <Text style={[s.centerText, { color: colors.mutedForeground }]}>Mapbox token not configured</Text>
-            </View>
-          ) : loadingTrail ? (
-            <View style={[s.center, { backgroundColor: "#F8FAFC" }]}>
-              <ActivityIndicator size="large" color="#0891B2" />
-              <Text style={[s.centerText, { color: colors.mutedForeground }]}>Loading trail…</Text>
-            </View>
-          ) : (
-            <MapboxGL.MapView
-              style={StyleSheet.absoluteFill}
-              styleURL="mapbox://styles/mapbox/light-v11"
-              logoEnabled={false}
-              attributionEnabled={false}
-              compassEnabled={false}
-              scaleBarEnabled={false}
-            >
-              <MapboxGL.Camera
-                ref={cameraRef}
-                zoomLevel={5}
-                centerCoordinate={PAKISTAN_CENTER}
+        {/* Map view */}
+        {viewMode === "map" && (
+          <View style={s.mapWrapper}>
+            {!hasToken ? (
+              <View style={[s.center, { backgroundColor: colors.muted }]}>
+                <Feather name="map" size={32} color={colors.mutedForeground} />
+                <Text style={[s.centerText, { color: colors.mutedForeground }]}>Mapbox token not configured</Text>
+              </View>
+            ) : loadingTrail ? (
+              <View style={[s.center, { backgroundColor: "#F8FAFC" }]}>
+                <ActivityIndicator size="large" color="#0891B2" />
+                <Text style={[s.centerText, { color: colors.mutedForeground }]}>Loading trail…</Text>
+              </View>
+            ) : (
+              <MapboxGL.MapView
+                style={StyleSheet.absoluteFill}
+                styleURL="mapbox://styles/mapbox/light-v11"
+                logoEnabled={false}
+                attributionEnabled={false}
+                compassEnabled={false}
+                scaleBarEnabled={false}
+                onPress={() => setSelectedPoint(null)}
+              >
+                <MapboxGL.Camera
+                  ref={cameraRef}
+                  zoomLevel={5}
+                  centerCoordinate={PAKISTAN_CENTER}
+                />
+
+                {/* Trail polyline */}
+                {trailGeoJSON && (
+                  <MapboxGL.ShapeSource id="trail-source" shape={trailGeoJSON}>
+                    <MapboxGL.LineLayer
+                      id="trail-line"
+                      style={{
+                        lineColor: "#0891B2",
+                        lineWidth: 3,
+                        lineOpacity: 0.75,
+                        lineCap: "round",
+                        lineJoin: "round",
+                      }}
+                    />
+                  </MapboxGL.ShapeSource>
+                )}
+
+                {/* Tappable trail points */}
+                {trailPointsGeoJSON && (
+                  <MapboxGL.ShapeSource
+                    id="trail-points-source"
+                    shape={trailPointsGeoJSON}
+                    onPress={handleTrailPointPress}
+                  >
+                    <MapboxGL.CircleLayer
+                      id="trail-points-layer"
+                      style={{
+                        circleRadius: 5,
+                        circleColor: "#0891B2",
+                        circleOpacity: 0.65,
+                        circleStrokeWidth: 1.5,
+                        circleStrokeColor: "white",
+                      }}
+                    />
+                  </MapboxGL.ShapeSource>
+                )}
+
+                {/* Start marker (green) */}
+                {firstPoint && trailPoints.length > 1 && (
+                  <MapboxGL.PointAnnotation
+                    key="trail-start"
+                    id="trail-start"
+                    coordinate={[parseFloat(firstPoint.longitude), parseFloat(firstPoint.latitude)]}
+                  >
+                    <View style={s.dotWrap}>
+                      <View style={[s.dot, { backgroundColor: "#10B981" }]} />
+                      <Text style={s.dotLabel}>Start {formatTime(firstPoint.recordedAt)}</Text>
+                    </View>
+                  </MapboxGL.PointAnnotation>
+                )}
+
+                {/* Live / latest dot */}
+                {currentPoint && (
+                  <MapboxGL.PointAnnotation
+                    key="tech-current"
+                    id="tech-current"
+                    coordinate={[
+                      parseFloat((currentPoint as { longitude: string }).longitude),
+                      parseFloat((currentPoint as { latitude: string }).latitude),
+                    ]}
+                  >
+                    <View style={s.dotWrap}>
+                      <View style={[s.dot, s.dotLive, {
+                        backgroundColor: isToday && liveLocation ? "#EF4444" : "#F59E0B",
+                      }]} />
+                      <Text style={s.dotLabel}>
+                        {isToday && liveLocation
+                          ? `Now · ${minutesAgo(liveLocation.recordedAt)}`
+                          : lastPoint ? `Last · ${formatTime(lastPoint.recordedAt)}` : ""}
+                      </Text>
+                    </View>
+                  </MapboxGL.PointAnnotation>
+                )}
+              </MapboxGL.MapView>
+            )}
+
+            {/* Trail count badge */}
+            {trailPoints.length > 0 && (
+              <View style={s.trailBadge} pointerEvents="none">
+                <Feather name="navigation" size={10} color="white" />
+                <Text style={s.trailBadgeText}>{trailPoints.length} pings</Text>
+              </View>
+            )}
+
+            {/* Live badge */}
+            {isToday && (
+              <View style={[s.liveBadge, { right: trailPoints.length > 0 ? 90 : 10 }]} pointerEvents="none">
+                <View style={[s.liveDot, { backgroundColor: liveLocation ? "#EF4444" : "#6B7280" }]} />
+                <Text style={s.liveText}>{liveLocation ? "LIVE" : "OFFLINE"}</Text>
+              </View>
+            )}
+
+            {/* Tapped-point tooltip */}
+            {selectedPoint && (
+              <View style={s.tooltip}>
+                <Feather name="map-pin" size={12} color="white" />
+                <Text style={s.tooltipText}>
+                  Ping #{selectedPoint.index + 1} · {formatTime(selectedPoint.time)}
+                </Text>
+                <TouchableOpacity onPress={() => setSelectedPoint(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Feather name="x" size={14} color="rgba(255,255,255,0.8)" />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Timeline view */}
+        {viewMode === "timeline" && (
+          <View style={[s.timelineWrapper, { backgroundColor: colors.background }]}>
+            {loadingTrail ? (
+              <View style={s.center}>
+                <ActivityIndicator size="large" color="#0891B2" />
+              </View>
+            ) : trailPoints.length === 0 ? (
+              <View style={s.center}>
+                <Feather name="map-pin" size={32} color={colors.mutedForeground} />
+                <Text style={[s.centerText, { color: colors.mutedForeground }]}>No pings for {date}</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={trailPoints}
+                keyExtractor={(_, i) => `tp-${i}`}
+                contentContainerStyle={s.timelineList}
+                ItemSeparatorComponent={() => <View style={[s.sep, { backgroundColor: colors.border }]} />}
+                renderItem={({ item, index }) => (
+                  <View style={s.timelineRow}>
+                    <View style={[s.timelineDot, {
+                      backgroundColor: index === 0 ? "#10B981"
+                        : index === trailPoints.length - 1 ? "#EF4444"
+                        : "#0891B2",
+                    }]} />
+                    <View style={s.timelineInfo}>
+                      <Text style={[s.timelineTime, { color: colors.foreground }]}>
+                        {formatTime(item.recordedAt)}
+                      </Text>
+                      <Text style={[s.timelineCoord, { color: colors.mutedForeground }]}>
+                        {parseFloat(item.latitude).toFixed(5)}, {parseFloat(item.longitude).toFixed(5)}
+                      </Text>
+                    </View>
+                    <Text style={[s.timelineIdx, { color: colors.mutedForeground }]}>#{index + 1}</Text>
+                  </View>
+                )}
               />
-
-              {/* Trail polyline */}
-              {trailGeoJSON && (
-                <MapboxGL.ShapeSource id="trail-source" shape={trailGeoJSON}>
-                  <MapboxGL.LineLayer
-                    id="trail-line"
-                    style={{
-                      lineColor: "#0891B2",
-                      lineWidth: 3,
-                      lineOpacity: 0.75,
-                      lineCap: "round",
-                      lineJoin: "round",
-                    }}
-                  />
-                </MapboxGL.ShapeSource>
-              )}
-
-              {/* Start marker (green) */}
-              {firstPoint && trailPoints.length > 1 && (
-                <MapboxGL.PointAnnotation
-                  key="trail-start"
-                  id="trail-start"
-                  coordinate={[parseFloat(firstPoint.longitude), parseFloat(firstPoint.latitude)]}
-                >
-                  <View style={[s.dotWrap]}>
-                    <View style={[s.dot, { backgroundColor: "#10B981" }]} />
-                    <Text style={s.dotLabel}>Start {formatTime(firstPoint.recordedAt)}</Text>
-                  </View>
-                </MapboxGL.PointAnnotation>
-              )}
-
-              {/* Live / latest dot */}
-              {currentPoint && (
-                <MapboxGL.PointAnnotation
-                  key="tech-current"
-                  id="tech-current"
-                  coordinate={[
-                    parseFloat(
-                      (currentPoint as { longitude: string }).longitude
-                    ),
-                    parseFloat(
-                      (currentPoint as { latitude: string }).latitude
-                    ),
-                  ]}
-                >
-                  <View style={s.dotWrap}>
-                    <View style={[s.dot, s.dotLive, { backgroundColor: isToday && liveLocation ? "#EF4444" : "#F59E0B" }]} />
-                    <Text style={s.dotLabel}>
-                      {isToday && liveLocation
-                        ? `Now · ${minutesAgo(liveLocation.recordedAt)}`
-                        : lastPoint ? `Last · ${formatTime(lastPoint.recordedAt)}` : ""}
-                    </Text>
-                  </View>
-                </MapboxGL.PointAnnotation>
-              )}
-            </MapboxGL.MapView>
-          )}
-
-          {/* Trail count badge */}
-          {trailPoints.length > 0 && (
-            <View style={s.trailBadge} pointerEvents="none">
-              <Feather name="navigation" size={10} color="white" />
-              <Text style={s.trailBadgeText}>{trailPoints.length} pings</Text>
-            </View>
-          )}
-
-          {/* Live badge */}
-          {isToday && (
-            <View style={[s.liveBadge, { right: trailPoints.length > 0 ? 90 : 10 }]} pointerEvents="none">
-              <View style={[s.liveDot, { backgroundColor: liveLocation ? "#EF4444" : "#6B7280" }]} />
-              <Text style={s.liveText}>{liveLocation ? "LIVE" : "OFFLINE"}</Text>
-            </View>
-          )}
-        </View>
+            )}
+          </View>
+        )}
 
         {/* Stats row */}
         <View style={[s.stats, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
@@ -353,8 +497,8 @@ export function TechTrailModal({ visible, onClose, techId, techName }: Props) {
           ) : null}
         </View>
 
-        {/* Empty state */}
-        {!loadingTrail && trailPoints.length === 0 && (
+        {/* Empty state (map mode only) */}
+        {viewMode === "map" && !loadingTrail && trailPoints.length === 0 && (
           <View style={[s.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Feather name="map-pin" size={36} color={colors.mutedForeground} />
             <Text style={[s.emptyTitle, { color: colors.foreground }]}>No Location Data</Text>
@@ -384,21 +528,46 @@ const s = StyleSheet.create({
     paddingHorizontal: 14, paddingBottom: 14,
   },
   closeBtn: { padding: 6 },
+  modeBtn: {
+    padding: 8, backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 8, marginRight: 2,
+  },
   headerTitle: { fontSize: 17, fontFamily: "Inter_700Bold", color: "white" },
   headerSub: { fontSize: 11, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.8)", marginTop: 2 },
   datePicker: { borderBottomWidth: 1 },
-  datePickerContent: { paddingHorizontal: 12, paddingVertical: 8, gap: 6, alignItems: "center", flexDirection: "row" },
+  datePickerContent: {
+    paddingHorizontal: 12, paddingVertical: 8,
+    gap: 6, alignItems: "center", flexDirection: "row", flexWrap: "nowrap",
+    overflow: "scroll",
+  },
   dateBtn: {
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1,
   },
   dateBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  dateSep: { width: 1, height: 20, backgroundColor: "#E2E8F0" },
-  dateDisplay: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  dateSep: { width: 1, height: 20, backgroundColor: "#E2E8F0", flexShrink: 0 },
+  dateInput: {
+    fontSize: 12, fontFamily: "Inter_500Medium",
+    borderWidth: 1, borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 5,
+    minWidth: 100,
+  },
   mapWrapper: {
     flex: 1,
     backgroundColor: "#F1F5F9",
     position: "relative",
   },
+  timelineWrapper: { flex: 1 },
+  timelineList: { paddingVertical: 4 },
+  timelineRow: {
+    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 16, paddingVertical: 10, gap: 12,
+  },
+  timelineDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
+  timelineInfo: { flex: 1 },
+  timelineTime: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  timelineCoord: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
+  timelineIdx: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  sep: { height: 1, marginLeft: 38 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
   centerText: { fontSize: 14, fontFamily: "Inter_400Regular" },
   dotWrap: { alignItems: "center", gap: 2 },
@@ -434,6 +603,13 @@ const s = StyleSheet.create({
   },
   liveDot: { width: 7, height: 7, borderRadius: 4 },
   liveText: { color: "white", fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 1 },
+  tooltip: {
+    position: "absolute", bottom: 12, left: 12, right: 12,
+    backgroundColor: "rgba(15,23,42,0.88)",
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+    flexDirection: "row", alignItems: "center", gap: 8,
+  },
+  tooltipText: { flex: 1, color: "white", fontSize: 13, fontFamily: "Inter_600SemiBold" },
   stats: {
     flexDirection: "row", borderTopWidth: 1,
     paddingVertical: 12, paddingHorizontal: 16,

@@ -380,7 +380,7 @@ export function LiveMapSection() {
                         <View style={[s.statusDot, { backgroundColor: "#10B981" }]} />
                         <Text style={s.techCardSub}>{minutesAgo(loc.recordedAt)}</Text>
                       </View>
-                      <Text style={s.techCardIn}>In {formatTime(loc.checkInAt)}</Text>
+                      {loc.checkInAt ? <Text style={s.techCardIn}>In {formatTime(loc.checkInAt)}</Text> : null}
                     </View>
                   </View>
                   <Text style={[s.techCardTrailHint, { color: pinColor }]}>Tap for trail →</Text>
@@ -404,7 +404,7 @@ export function LiveMapSection() {
                 </Text>
               </View>
               <Text style={[s.trailPanelSub, { color: colors.mutedForeground }]}>
-                In {formatTime(selectedLoc.checkInAt)} · {minutesAgo(selectedLoc.recordedAt)}
+                {selectedLoc.checkInAt ? `In ${formatTime(selectedLoc.checkInAt)} · ` : ""}{minutesAgo(selectedLoc.recordedAt)}
               </Text>
             </View>
             <TouchableOpacity

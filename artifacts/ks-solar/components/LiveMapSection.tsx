@@ -131,7 +131,7 @@ export function LiveMapSection() {
   const [mapKey] = useState(0);
   const [selectedTechId, setSelectedTechId] = useState<string | null>(null);
   const selectedColorRef = useRef<string>("#3B82F6");
-  const locsRef = useRef<Array<{ id: string; lat: number; lng: number; name: string; color: string; status: string; checkInAt: string; recordedAt: string; address: string }>>([]);
+  const locsRef = useRef<Array<{ id: string; lat: number; lng: number; name: string; color: string; status: string; checkInAt: string | null | undefined; recordedAt: string; address: string }>>([]);
 
   const today = useMemo(() => new Date().toISOString().split("T")[0], []);
 
@@ -269,7 +269,7 @@ export function LiveMapSection() {
                     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
                       <View style={[s.chip, { backgroundColor: colors.muted }]}>
                         <Feather name="log-in" size={10} color={colors.mutedForeground} />
-                        <Text style={[s.chipText, { color: colors.mutedForeground }]}>In {formatTime(loc.checkInAt)}</Text>
+                        <Text style={[s.chipText, { color: colors.mutedForeground }]}>In {formatTime(loc.checkInAt ?? "")}</Text>
                       </View>
                       <View style={[s.chip, { backgroundColor: "#10B98115" }]}>
                         <Feather name="radio" size={10} color="#10B981" />
