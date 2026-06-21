@@ -3279,7 +3279,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: [active, away, offline]
+          enum: [active, away, offline, checked-in, online]
           description: "active = pinged within 30 min; away = 30 min–8 h; offline = 8 h+ or never pinged"
 
     DailyAttendanceStat:

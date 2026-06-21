@@ -16,4 +16,6 @@ export const TechnicianLiveLocationStatus = {
   active: 'active',
   away: 'away',
   offline: 'offline',
+  'checked-in': 'checked-in',
+  online: 'online',
 } as const;

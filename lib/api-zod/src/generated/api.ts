@@ -1613,7 +1613,7 @@ export const GetTechnicianLiveLocationsResponseItem = zod.object({
   "recordedAt": zod.string().nullish().describe('Null when technician has never sent a location ping'),
   "attendanceId": zod.string().nullish(),
   "checkInAt": zod.string().nullish(),
-  "status": zod.enum(['active', 'away', 'offline']).describe('active = pinged within 30 min; away = 30 min–8 h; offline = 8 h+ or never pinged')
+  "status": zod.enum(['active', 'away', 'offline', 'checked-in', 'online']).describe('active = pinged within 30 min; away = 30 min–8 h; offline = 8 h+ or never pinged')
 })
 export const GetTechnicianLiveLocationsResponse = zod.array(GetTechnicianLiveLocationsResponseItem)
 

@@ -34,6 +34,18 @@ function minutesAgo(iso: string) {
   return `${Math.floor(diff / 60)}h ${diff % 60}m ago`;
 }
 
+function statusColor(status: string): string {
+  if (status === "active") return "#10B981";
+  if (status === "away") return "#F59E0B";
+  return "#94A3B8";
+}
+
+function statusLabel(status: string): string {
+  if (status === "active") return "Active";
+  if (status === "away") return "Away";
+  return "Offline";
+}
+
 function buildMapHtml(token: string): string {
   return `<!DOCTYPE html>
 <html>
@@ -154,9 +166,13 @@ export function LiveMapSection() {
     { query: { queryKey: ["trail-section", selectedAttendanceId], enabled: !!selectedAttendanceId } }
   );
 
+  // All technicians — used for card list
+  const allLocs = useMemo(() => locations ?? [], [locations]);
+
+  // Only those with valid coordinates — used for map markers (iframe payload)
   const locs = useMemo(() => (
-    (locations ?? []).filter(l => !isNaN(parseFloat(l.latitude)) && !isNaN(parseFloat(l.longitude)))
-  ), [locations]);
+    allLocs.filter(l => !isNaN(parseFloat(l.latitude)) && !isNaN(parseFloat(l.longitude)))
+  ), [allLocs]);
 
   function buildPayload() {
     return locs.map((loc, idx) => ({
@@ -220,31 +236,34 @@ export function LiveMapSection() {
         </View>
       )}
 
-      {!isLoading && locs.length === 0 && (
+      {!isLoading && allLocs.length === 0 && (
         <View style={[s.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Feather name="map" size={32} color={colors.mutedForeground} />
-          <Text style={[s.emptyTitle, { color: colors.foreground }]}>No Active Technicians</Text>
+          <Text style={[s.emptyTitle, { color: colors.foreground }]}>No Technicians Found</Text>
           <Text style={[s.emptySub, { color: colors.mutedForeground }]}>
-            Technicians appear here after check-in and first location ping.
+            No approved technicians in the system yet.
           </Text>
         </View>
       )}
 
-      {!isLoading && locs.length > 0 && (
+      {!isLoading && allLocs.length > 0 && (
         <View style={s.listContent}>
           <Text style={[s.sectionLabel, { color: colors.mutedForeground }]}>
-            {locs.length} Technician{locs.length > 1 ? "s" : ""} Online · tap to view trail
+            {allLocs.length} Technician{allLocs.length > 1 ? "s" : ""} · tap to view trail
           </Text>
-          {locs.map((loc, idx) => {
+          {allLocs.map((loc, idx) => {
             const pinColor = TECH_COLORS[idx % TECH_COLORS.length];
             const lat = parseFloat(loc.latitude);
             const lng = parseFloat(loc.longitude);
+            const hasCoords = !isNaN(lat) && !isNaN(lng);
             const isSelected = selectedTechId === loc.technicianId;
+            const sColor = statusColor(loc.status);
             return (
               <TouchableOpacity
                 key={loc.technicianId}
                 style={[s.card, { backgroundColor: colors.card, borderColor: isSelected ? pinColor : colors.border }]}
                 onPress={() => {
+                  if (!hasCoords) return;
                   if (isSelected) {
                     setSelectedTechId(null);
                     selectedColorRef.current = "#3B82F6";
@@ -255,7 +274,7 @@ export function LiveMapSection() {
                     if (mapReadyRef.current) iframeRef.current?.contentWindow?.postMessage({ type: "CLEAR_TRAIL" }, "*");
                   }
                 }}
-                activeOpacity={0.85}
+                activeOpacity={hasCoords ? 0.85 : 1}
               >
                 <View style={{ height: 3, backgroundColor: pinColor, borderTopLeftRadius: 14, borderTopRightRadius: 14 }} />
                 <View style={s.cardBody}>
@@ -267,15 +286,17 @@ export function LiveMapSection() {
                   <View style={{ flex: 1, gap: 4 }}>
                     <Text style={[s.techName, { color: colors.foreground }]}>{loc.name}</Text>
                     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                      <View style={[s.chip, { backgroundColor: colors.muted }]}>
-                        <Feather name="log-in" size={10} color={colors.mutedForeground} />
-                        <Text style={[s.chipText, { color: colors.mutedForeground }]}>In {formatTime(loc.checkInAt ?? "")}</Text>
+                      {loc.checkInAt && (
+                        <View style={[s.chip, { backgroundColor: colors.muted }]}>
+                          <Feather name="log-in" size={10} color={colors.mutedForeground} />
+                          <Text style={[s.chipText, { color: colors.mutedForeground }]}>In {formatTime(loc.checkInAt)}</Text>
+                        </View>
+                      )}
+                      <View style={[s.chip, { backgroundColor: sColor + "15" }]}>
+                        <Feather name="radio" size={10} color={sColor} />
+                        <Text style={[s.chipText, { color: sColor }]}>{loc.recordedAt ? minutesAgo(loc.recordedAt) : "No ping yet"}</Text>
                       </View>
-                      <View style={[s.chip, { backgroundColor: "#10B98115" }]}>
-                        <Feather name="radio" size={10} color="#10B981" />
-                        <Text style={[s.chipText, { color: "#10B981" }]}>{loc.recordedAt ? minutesAgo(loc.recordedAt) : "No ping yet"}</Text>
-                      </View>
-                      {!isNaN(lat) && !isNaN(lng) && (
+                      {hasCoords && (
                         <View style={[s.chip, { backgroundColor: colors.muted }]}>
                           <Feather name="crosshair" size={10} color={colors.mutedForeground} />
                           <Text style={[s.chipText, { color: colors.mutedForeground }]}>{lat.toFixed(4)}, {lng.toFixed(4)}</Text>
@@ -289,12 +310,12 @@ export function LiveMapSection() {
                     ) : null}
                   </View>
                   <View style={[s.activeBadge, {
-                    backgroundColor: isSelected ? pinColor + "22" : "#10B98115",
-                    borderColor: isSelected ? pinColor + "66" : "#10B98144",
+                    backgroundColor: isSelected ? pinColor + "22" : sColor + "15",
+                    borderColor: isSelected ? pinColor + "66" : sColor + "44",
                   }]}>
-                    <View style={[s.activeDot, { backgroundColor: isSelected ? pinColor : "#10B981" }]} />
-                    <Text style={[s.activeBadgeText, { color: isSelected ? pinColor : "#10B981" }]}>
-                      {isSelected ? "Selected" : loc.status.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                    <View style={[s.activeDot, { backgroundColor: isSelected ? pinColor : sColor }]} />
+                    <Text style={[s.activeBadgeText, { color: isSelected ? pinColor : sColor }]}>
+                      {isSelected ? "Selected" : statusLabel(loc.status)}
                     </Text>
                   </View>
                 </View>
