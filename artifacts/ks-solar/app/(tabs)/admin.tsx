@@ -47,6 +47,7 @@ import {
 import * as Haptics from "expo-haptics";
 import React, { useEffect, useState } from "react";
 import { LiveMapSection } from "@/components/LiveMapSection";
+import { TechTrailModal } from "@/components/TechTrailModal";
 import {
   ActivityIndicator,
   Alert,
@@ -567,6 +568,10 @@ function AdminContent() {
   const [newTechEmailErr, setNewTechEmailErr] = useState("");
   const [newTechPhoneErr, setNewTechPhoneErr] = useState("");
   const [newTechPasswordErr, setNewTechPasswordErr] = useState("");
+
+  // Tech trail map state
+  const [trailTechId, setTrailTechId] = useState<string | null>(null);
+  const [trailTechName, setTrailTechName] = useState("");
 
   // Edit technician state
   const [editingTechId, setEditingTechId] = useState<string | null>(null);
@@ -1906,6 +1911,18 @@ function AdminContent() {
                   </View>
                 </View>
                 <View style={[styles.userActionRow, { borderTopColor: colors.border }]}>
+                  <TouchableOpacity
+                    style={[styles.userActionBtn, { backgroundColor: "#0891B218", borderColor: "#0891B244" }]}
+                    onPress={() => {
+                      hapticSelection();
+                      setTrailTechId(item.id);
+                      setTrailTechName(item.name);
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Feather name="map-pin" size={14} color="#0891B2" />
+                    <Text style={[styles.userActionBtnText, { color: "#0891B2" }]}>Track</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.userActionBtn, { backgroundColor: "#6366F118", borderColor: "#6366F144" }]}
                     onPress={() => {
@@ -4051,6 +4068,13 @@ function AdminContent() {
       </Modal>
 
       {tab === "liveMap" && <LiveMapSection />}
+
+      <TechTrailModal
+        visible={!!trailTechId}
+        techId={trailTechId ?? ""}
+        techName={trailTechName}
+        onClose={() => setTrailTechId(null)}
+      />
     </View>
   );
 }

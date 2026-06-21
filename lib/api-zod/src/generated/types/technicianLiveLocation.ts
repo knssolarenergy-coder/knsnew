@@ -13,8 +13,8 @@ export interface TechnicianLiveLocation {
   longitude: string;
   address?: string | null;
   recordedAt: string;
-  attendanceId: string;
-  checkInAt: string;
-  /** Technician field status (e.g. checked-in) */
+  attendanceId?: string | null;
+  checkInAt?: string | null;
+  /** Technician field status (e.g. checked-in, online) */
   status: string;
 }

@@ -64,6 +64,13 @@
       "when": 1781878445359,
       "tag": "0008_flashy_psynapse",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1782040845096,
+      "tag": "0009_ambitious_night_thrasher",
+      "breakpoints": true
     }
   ]
 }

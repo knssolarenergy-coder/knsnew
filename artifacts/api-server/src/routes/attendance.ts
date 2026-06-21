@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { attendance, locationPings, settings, sites, technicianLocations, users } from "@workspace/db/schema";
-import { eq, desc, and, gte, lt, inArray, isNull } from "drizzle-orm";
+import { attendance, locationPings, settings, sites, technicianLocationHistory, technicianLocations, users } from "@workspace/db/schema";
+import { eq, desc, and, gte, lte, lt, inArray, isNull } from "drizzle-orm";
 import { requireAdmin } from "../middleware/auth.js";
 import { requireTechnician } from "../middleware/auth.js";
 import { randomUUID } from "crypto";
@@ -461,6 +461,95 @@ router.post("/attendance/manual", requireAdmin, async (req, res) => {
   res.status(201).json(await formatRecord(row, attSettings));
 });
 
+// POST /technician-locations/ping — always-on ping (no attendanceId required)
+router.post("/technician-locations/ping", requireTechnician, async (req, res) => {
+  const { latitude, longitude, recordedAt } = req.body as {
+    latitude: string;
+    longitude: string;
+    recordedAt?: string | null;
+  };
+  if (!latitude || !longitude) {
+    res.status(400).json({ error: "latitude and longitude are required" });
+    return;
+  }
+  const technicianId = req.auth!.userId;
+  const now = new Date();
+  const pingTime = recordedAt ? new Date(recordedAt) : now;
+  const safePingTime = isNaN(pingTime.getTime()) ? now : pingTime;
+
+  await db
+    .insert(technicianLocations)
+    .values({ technicianId, latitude, longitude, address: null, updatedAt: now })
+    .onConflictDoUpdate({
+      target: technicianLocations.technicianId,
+      set: { latitude, longitude, address: null, updatedAt: now },
+    });
+
+  await db.insert(technicianLocationHistory).values({
+    id: randomUUID(),
+    technicianId,
+    latitude,
+    longitude,
+    recordedAt: safePingTime,
+    receivedAt: now,
+  });
+
+  res.json({ ok: true });
+});
+
+// GET /technician-locations/trail — admin: ordered pings for a technician on a given date
+router.get("/technician-locations/trail", requireAdmin, async (req, res) => {
+  const userId = req.query.userId as string;
+  const dateStr = req.query.date as string | undefined;
+
+  if (!userId) {
+    res.status(400).json({ error: "userId is required" });
+    return;
+  }
+
+  const targetDate = dateStr ? new Date(dateStr) : new Date();
+  if (isNaN(targetDate.getTime())) {
+    res.status(400).json({ error: "Invalid date" });
+    return;
+  }
+
+  const dayStart = new Date(
+    targetDate.getFullYear(),
+    targetDate.getMonth(),
+    targetDate.getDate(),
+    0, 0, 0, 0
+  );
+  const dayEnd = new Date(
+    targetDate.getFullYear(),
+    targetDate.getMonth(),
+    targetDate.getDate(),
+    23, 59, 59, 999
+  );
+
+  const pings = await db
+    .select()
+    .from(technicianLocationHistory)
+    .where(
+      and(
+        eq(technicianLocationHistory.technicianId, userId),
+        gte(technicianLocationHistory.recordedAt, dayStart),
+        lte(technicianLocationHistory.recordedAt, dayEnd)
+      )
+    )
+    .orderBy(technicianLocationHistory.recordedAt);
+
+  res.json(
+    pings.map((p) => ({
+      id: p.id,
+      technicianId: p.technicianId,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      recordedAt: p.recordedAt.toISOString(),
+      receivedAt: p.receivedAt.toISOString(),
+    }))
+  );
+});
+
 // POST /technician-locations — technician: upsert latest location
 router.post("/technician-locations", requireTechnician, async (req, res) => {
   const { attendanceId, latitude, longitude, address } = req.body as {
@@ -513,58 +602,35 @@ router.post("/technician-locations", requireTechnician, async (req, res) => {
   res.json({ ok: true });
 });
 
-// GET /technician-locations — admin: latest live location per currently checked-in technician
+// GET /technician-locations — admin: latest live location for all technicians with a recent ping
 router.get("/technician-locations", requireAdmin, async (req, res) => {
   const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // Show any technician who has pinged in the last 4 hours
+  const cutoff = new Date(now.getTime() - 4 * 60 * 60 * 1000);
 
-  // Active attendance records for today (checked in, not yet checked out)
-  const activeRows = await db
-    .select({
-      id: attendance.id,
-      technicianId: attendance.technicianId,
-      checkInAt: attendance.checkInAt,
-    })
-    .from(attendance)
-    .where(
-      and(
-        gte(attendance.checkInAt, todayStart),
-        isNull(attendance.checkOutAt),
-      )
-    );
-
-  if (activeRows.length === 0) {
-    res.json([]);
-    return;
-  }
-
-  const activeTechIds = activeRows.map(r => r.technicianId);
-  const activeAttIds = activeRows.map(r => r.id);
-
-  // Latest location from upsert table — must match the CURRENT active attendance session
-  // (prevents showing stale locations from a previous check-in)
   const latestLocs = await db
     .select()
     .from(technicianLocations)
-    .where(
-      and(
-        inArray(technicianLocations.technicianId, activeTechIds),
-        inArray(technicianLocations.attendanceId, activeAttIds),
-      )
-    );
+    .where(gte(technicianLocations.updatedAt, cutoff));
 
   if (latestLocs.length === 0) {
     res.json([]);
     return;
   }
 
-  // Fetch technician names
   const techIds = latestLocs.map(l => l.technicianId);
   const techUsers = await db
     .select({ id: users.id, name: users.name })
     .from(users)
     .where(inArray(users.id, techIds));
   const nameById = new Map(techUsers.map(u => [u.id, u.name]));
+
+  // Also check for active attendance (checked in today) to show status
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const activeRows = await db
+    .select({ id: attendance.id, technicianId: attendance.technicianId, checkInAt: attendance.checkInAt })
+    .from(attendance)
+    .where(and(gte(attendance.checkInAt, todayStart), isNull(attendance.checkOutAt)));
   const attByTech = new Map(activeRows.map(r => [r.technicianId, r]));
 
   const result = latestLocs.map(loc => {
@@ -576,9 +642,9 @@ router.get("/technician-locations", requireAdmin, async (req, res) => {
       longitude: loc.longitude,
       address: loc.address,
       recordedAt: loc.updatedAt.toISOString(),
-      attendanceId: loc.attendanceId,
-      checkInAt: att?.checkInAt.toISOString() ?? new Date().toISOString(),
-      status: "checked-in",
+      attendanceId: loc.attendanceId ?? null,
+      checkInAt: att?.checkInAt.toISOString() ?? null,
+      status: att ? "checked-in" : "online",
     };
   });
 

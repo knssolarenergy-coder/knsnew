@@ -773,6 +773,22 @@ export interface UpsertTechnicianLocationInput {
   address?: string | null;
 }
 
+export interface AlwaysOnPingInput {
+  latitude: string;
+  longitude: string;
+  /** ISO timestamp from device GPS (optional, defaults to server time) */
+  recordedAt?: string | null;
+}
+
+export interface LocationTrailPoint {
+  id: string;
+  technicianId: string;
+  latitude: string;
+  longitude: string;
+  recordedAt: string;
+  receivedAt: string;
+}
+
 export interface TechnicianLiveLocation {
   technicianId: string;
   name: string;
@@ -780,9 +796,9 @@ export interface TechnicianLiveLocation {
   longitude: string;
   address?: string | null;
   recordedAt: string;
-  attendanceId: string;
-  checkInAt: string;
-  /** Technician field status (e.g. checked-in) */
+  attendanceId?: string | null;
+  checkInAt?: string | null;
+  /** Technician field status (e.g. checked-in, online) */
   status: string;
 }
 
@@ -893,6 +909,18 @@ technicianId?: string;
 
 export type UpsertTechnicianLocation200 = {
   ok: boolean;
+};
+
+export type SendAlwaysOnLocationPing200 = {
+  ok: boolean;
+};
+
+export type GetTechnicianLocationTrailParams = {
+userId: string;
+/**
+ * ISO date string (YYYY-MM-DD). Defaults to today.
+ */
+date?: string;
 };
 
 export type AdminUpdateAttendance404 = {

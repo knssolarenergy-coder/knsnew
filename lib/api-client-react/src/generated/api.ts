@@ -27,6 +27,7 @@ import type {
   AdminUpdateAttendance404,
   AdminUpdateAttendanceRequest,
   AdminUser,
+  AlwaysOnPingInput,
   AssignSiteTechniciansRequest,
   AssignTechniciansRequest,
   AttendanceRecord,
@@ -50,11 +51,13 @@ import type {
   DownloadTechnicianReportPdfParams,
   GetAdminPaymentRequestsParams,
   GetAttendanceParams,
+  GetTechnicianLocationTrailParams,
   GetTechnicianReportParams,
   GetWarrantiesParams,
   HealthStatus,
   LocationPing,
   LocationPingRequest,
+  LocationTrailPoint,
   LoginRequest,
   ManualAttendanceRequest,
   PaymentRequest,
@@ -65,6 +68,7 @@ import type {
   RegisterPendingResponse,
   RegisterRequest,
   SearchWarrantyByInvoiceParams,
+  SendAlwaysOnLocationPing200,
   SendMessageRequest,
   Setting,
   Site,
@@ -5104,6 +5108,160 @@ export function useGetTechnicianLiveLocations<TData = Awaited<ReturnType<typeof 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetTechnicianLiveLocationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSendAlwaysOnLocationPingUrl = () => {
+
+
+
+
+  return `/api/technician-locations/ping`
+}
+
+/**
+ * @summary Send always-on GPS location ping (no attendanceId required)
+ */
+export const sendAlwaysOnLocationPing = async (alwaysOnPingInput: AlwaysOnPingInput, options?: RequestInit): Promise<SendAlwaysOnLocationPing200> => {
+
+  return customFetch<SendAlwaysOnLocationPing200>(getSendAlwaysOnLocationPingUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(alwaysOnPingInput)
+  }
+);}
+
+
+
+
+export const getSendAlwaysOnLocationPingMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAlwaysOnLocationPing>>, TError,{data: BodyType<AlwaysOnPingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendAlwaysOnLocationPing>>, TError,{data: BodyType<AlwaysOnPingInput>}, TContext> => {
+
+const mutationKey = ['sendAlwaysOnLocationPing'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendAlwaysOnLocationPing>>, {data: BodyType<AlwaysOnPingInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendAlwaysOnLocationPing(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendAlwaysOnLocationPingMutationResult = NonNullable<Awaited<ReturnType<typeof sendAlwaysOnLocationPing>>>
+    export type SendAlwaysOnLocationPingMutationBody = BodyType<AlwaysOnPingInput>
+    export type SendAlwaysOnLocationPingMutationError = ErrorType<void>
+
+    /**
+ * @summary Send always-on GPS location ping (no attendanceId required)
+ */
+export const useSendAlwaysOnLocationPing = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAlwaysOnLocationPing>>, TError,{data: BodyType<AlwaysOnPingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendAlwaysOnLocationPing>>,
+        TError,
+        {data: BodyType<AlwaysOnPingInput>},
+        TContext
+      > => {
+      return useMutation(getSendAlwaysOnLocationPingMutationOptions(options));
+    }
+
+export const getGetTechnicianLocationTrailUrl = (params: GetTechnicianLocationTrailParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/technician-locations/trail?${stringifiedParams}` : `/api/technician-locations/trail`
+}
+
+/**
+ * @summary Get GPS location trail for a technician on a given date (admin)
+ */
+export const getTechnicianLocationTrail = async (params: GetTechnicianLocationTrailParams, options?: RequestInit): Promise<LocationTrailPoint[]> => {
+
+  return customFetch<LocationTrailPoint[]>(getGetTechnicianLocationTrailUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTechnicianLocationTrailQueryKey = (params?: GetTechnicianLocationTrailParams,) => {
+    return [
+    `/api/technician-locations/trail`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetTechnicianLocationTrailQueryOptions = <TData = Awaited<ReturnType<typeof getTechnicianLocationTrail>>, TError = ErrorType<void>>(params: GetTechnicianLocationTrailParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTechnicianLocationTrail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTechnicianLocationTrailQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTechnicianLocationTrail>>> = ({ signal }) => getTechnicianLocationTrail(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTechnicianLocationTrail>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTechnicianLocationTrailQueryResult = NonNullable<Awaited<ReturnType<typeof getTechnicianLocationTrail>>>
+export type GetTechnicianLocationTrailQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get GPS location trail for a technician on a given date (admin)
+ */
+
+export function useGetTechnicianLocationTrail<TData = Awaited<ReturnType<typeof getTechnicianLocationTrail>>, TError = ErrorType<void>>(
+ params: GetTechnicianLocationTrailParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTechnicianLocationTrail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTechnicianLocationTrailQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

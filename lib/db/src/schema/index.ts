@@ -221,11 +221,20 @@ export const siteVisits = pgTable("site_visits", {
 
 export const technicianLocations = pgTable("technician_locations", {
   technicianId: text("technician_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
-  attendanceId: text("attendance_id").notNull(),
+  attendanceId: text("attendance_id"),
   latitude: text("latitude").notNull(),
   longitude: text("longitude").notNull(),
   address: text("address"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const technicianLocationHistory = pgTable("technician_location_history", {
+  id: text("id").primaryKey(),
+  technicianId: text("technician_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  latitude: text("latitude").notNull(),
+  longitude: text("longitude").notNull(),
+  recordedAt: timestamp("recorded_at").notNull(),
+  receivedAt: timestamp("received_at").defaultNow().notNull(),
 });
 
 export const insertBookingSchema = createInsertSchema(bookings).omit({

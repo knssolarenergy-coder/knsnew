@@ -22,6 +22,12 @@ import { LocationEnforcementOverlay } from "@/components/LocationEnforcementOver
 import { UpdateModal } from "@/components/UpdateModal";
 import { registerForPushNotificationsAsync } from "@/hooks/usePushNotifications";
 import { useRouter } from "expo-router";
+import {
+  flushOfflineQueue,
+  sendForegroundPing,
+  startAlwaysOnTracking,
+  startAppStateFlushListener,
+} from "@/backgroundLocationTask";
 // Register background location task at app startup — wrapped in try/catch so any
 // task-manager init failure never crashes the whole app.
 if (Platform.OS !== "web") {
@@ -106,6 +112,38 @@ function PushManager() {
   return null;
 }
 
+function LocationTracker() {
+  const { user } = useAuth();
+  const lastUserId = useRef<string | null>(null);
+  const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const appStateUnsubRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    if (!user || user.role !== "technician") return;
+    if (lastUserId.current === user.id) return;
+    lastUserId.current = user.id;
+
+    startAlwaysOnTracking().catch(() => {});
+    flushOfflineQueue().catch(() => {});
+    sendForegroundPing().catch(() => {});
+
+    pingIntervalRef.current = setInterval(() => {
+      sendForegroundPing().catch(() => {});
+    }, 30_000);
+
+    appStateUnsubRef.current = startAppStateFlushListener();
+
+    return () => {
+      if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
+      if (appStateUnsubRef.current) appStateUnsubRef.current();
+      lastUserId.current = null;
+    };
+  }, [user?.id, user?.role]);
+
+  return null;
+}
+
 function NotificationObserver() {
   const router = useRouter();
 
@@ -171,6 +209,7 @@ export default function RootLayout() {
                   <PushManager />
                   <NotificationObserver />
                   <UpdateChecker />
+                  <LocationTracker />
                   <LocationEnforcementOverlay />
                   <Stack screenOptions={{ headerShown: false }}>
                     <Stack.Screen name="(tabs)" />

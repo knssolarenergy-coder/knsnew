@@ -1611,11 +1611,44 @@ export const GetTechnicianLiveLocationsResponseItem = zod.object({
   "longitude": zod.string(),
   "address": zod.string().nullish(),
   "recordedAt": zod.string(),
-  "attendanceId": zod.string(),
-  "checkInAt": zod.string(),
-  "status": zod.string().describe('Technician field status (e.g. checked-in)')
+  "attendanceId": zod.string().nullish(),
+  "checkInAt": zod.string().nullish(),
+  "status": zod.string().describe('Technician field status (e.g. checked-in, online)')
 })
 export const GetTechnicianLiveLocationsResponse = zod.array(GetTechnicianLiveLocationsResponseItem)
+
+
+/**
+ * @summary Send always-on GPS location ping (no attendanceId required)
+ */
+export const SendAlwaysOnLocationPingBody = zod.object({
+  "latitude": zod.string(),
+  "longitude": zod.string(),
+  "recordedAt": zod.string().nullish().describe('ISO timestamp from device GPS (optional, defaults to server time)')
+})
+
+export const SendAlwaysOnLocationPingResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Get GPS location trail for a technician on a given date (admin)
+ */
+export const GetTechnicianLocationTrailQueryParams = zod.object({
+  "userId": zod.coerce.string(),
+  "date": zod.coerce.string().optional().describe('ISO date string (YYYY-MM-DD). Defaults to today.')
+})
+
+export const GetTechnicianLocationTrailResponseItem = zod.object({
+  "id": zod.string(),
+  "technicianId": zod.string(),
+  "latitude": zod.string(),
+  "longitude": zod.string(),
+  "recordedAt": zod.string(),
+  "receivedAt": zod.string()
+})
+export const GetTechnicianLocationTrailResponse = zod.array(GetTechnicianLocationTrailResponseItem)
 
 
 /**

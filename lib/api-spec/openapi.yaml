@@ -1582,6 +1582,66 @@ paths:
         '403':
           description: Forbidden
 
+  /technician-locations/ping:
+    post:
+      tags: [attendance]
+      operationId: sendAlwaysOnLocationPing
+      summary: Send always-on GPS location ping (no attendanceId required)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlwaysOnPingInput'
+      responses:
+        '200':
+          description: Ping saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          description: Bad Request
+        '403':
+          description: Forbidden
+
+  /technician-locations/trail:
+    get:
+      tags: [attendance]
+      operationId: getTechnicianLocationTrail
+      summary: Get GPS location trail for a technician on a given date (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: date
+          in: query
+          required: false
+          description: "ISO date string (YYYY-MM-DD). Defaults to today."
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Ordered list of GPS pings for this technician on the given date.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LocationTrailPoint'
+        '403':
+          description: Forbidden
+
   /attendance/{id}/location-trail:
     get:
       tags: [attendance]
@@ -3160,9 +3220,39 @@ components:
           type: string
           nullable: true
 
+    AlwaysOnPingInput:
+      type: object
+      required: [latitude, longitude]
+      properties:
+        latitude:
+          type: string
+        longitude:
+          type: string
+        recordedAt:
+          type: string
+          nullable: true
+          description: "ISO timestamp from device GPS (optional, defaults to server time)"
+
+    LocationTrailPoint:
+      type: object
+      required: [id, technicianId, latitude, longitude, recordedAt, receivedAt]
+      properties:
+        id:
+          type: string
+        technicianId:
+          type: string
+        latitude:
+          type: string
+        longitude:
+          type: string
+        recordedAt:
+          type: string
+        receivedAt:
+          type: string
+
     TechnicianLiveLocation:
       type: object
-      required: [technicianId, name, latitude, longitude, recordedAt, attendanceId, checkInAt, status]
+      required: [technicianId, name, latitude, longitude, recordedAt, status]
       properties:
         technicianId:
           type: string
@@ -3179,11 +3269,13 @@ components:
           type: string
         attendanceId:
           type: string
+          nullable: true
         checkInAt:
           type: string
+          nullable: true
         status:
           type: string
-          description: "Technician field status (e.g. checked-in)"
+          description: "Technician field status (e.g. checked-in, online)"
 
     DailyAttendanceStat:
       type: object
