@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Location from "expo-location";
 import * as SecureStore from "expo-secure-store";
 import { AppState, Platform } from "react-native";
@@ -70,6 +71,30 @@ export async function setCurrentUserId(userId: string): Promise<void> {
 export async function clearCurrentUserId(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(USER_ID_KEY);
+  } catch {}
+  await setTrackingFlag(false);
+}
+
+/**
+ * Writes or removes a plain flag file that the Android BroadcastReceiver
+ * (KSSolarBootReceiver) can check after a device reboot. The file lives in
+ * the app's internal files directory (getFilesDir()), which is the same path
+ * Expo FileSystem maps to documentDirectory on Android.
+ *
+ * Only runs on Android — iOS handles background location restarts natively.
+ */
+async function setTrackingFlag(active: boolean): Promise<void> {
+  if (Platform.OS !== "android") return;
+  try {
+    const flagPath = `${FileSystem.documentDirectory ?? ""}ks_tracking_active`;
+    if (active) {
+      await FileSystem.writeAsStringAsync(flagPath, "1");
+    } else {
+      const info = await FileSystem.getInfoAsync(flagPath);
+      if (info.exists) {
+        await FileSystem.deleteAsync(flagPath, { idempotent: true });
+      }
+    }
   } catch {}
 }
 
@@ -214,6 +239,8 @@ export async function startAlwaysOnTracking(): Promise<void> {
         showsBackgroundLocationIndicator: true,
       });
     }
+    // Write flag so KSSolarBootReceiver can restart the service after a reboot.
+    await setTrackingFlag(true);
   } catch {}
 }
 
@@ -223,6 +250,7 @@ export async function stopAlwaysOnTracking(): Promise<void> {
     const already = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
     if (already) await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
   } catch {}
+  await setTrackingFlag(false);
 }
 
 export async function sendForegroundPing(): Promise<void> {
