@@ -24,7 +24,6 @@ import { UpdateModal } from "@/components/UpdateModal";
 import { registerForPushNotificationsAsync } from "@/hooks/usePushNotifications";
 import { useRouter } from "expo-router";
 import {
-  clearCurrentUserId,
   flushOfflineQueue,
   sendForegroundPing,
   setCurrentUserId,
@@ -141,7 +140,7 @@ function PushManager() {
 }
 
 function LocationTracker() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const lastUserId = useRef<string | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const appStateUnsubRef = useRef<(() => void) | null>(null);
@@ -149,21 +148,38 @@ function LocationTracker() {
 
   useEffect(() => {
     if (Platform.OS === "web") return;
+    // Wait until auth has settled. A transient null user during token
+    // re-validation (cold start, resume, network blip) must NEVER tear down an
+    // active technician's tracking — that was the root cause of tracking dying.
+    if (isLoading) return;
+
+    const teardownListeners = () => {
+      if (pingIntervalRef.current) { clearInterval(pingIntervalRef.current); pingIntervalRef.current = null; }
+      if (appStateUnsubRef.current) { appStateUnsubRef.current(); appStateUnsubRef.current = null; }
+      if (netInfoUnsubRef.current) { netInfoUnsubRef.current(); netInfoUnsubRef.current = null; }
+    };
 
     if (!user || user.role !== "technician") {
-      if (lastUserId.current) {
+      // A confirmed non-technician is signed in (admin/customer) → they must not
+      // be tracked, so stop the native service. An explicit logout already stops
+      // tracking from AuthContext.logout(); a logged-out (null) user has nothing
+      // running to stop. Because we gate on !isLoading above, this can never fire
+      // on a transient null user.
+      if (user && user.role !== "technician") {
         stopAlwaysOnTracking().catch(() => {});
-        clearCurrentUserId().catch(() => {});
-        if (pingIntervalRef.current) { clearInterval(pingIntervalRef.current); pingIntervalRef.current = null; }
-        if (appStateUnsubRef.current) { appStateUnsubRef.current(); appStateUnsubRef.current = null; }
-        if (netInfoUnsubRef.current) { netInfoUnsubRef.current(); netInfoUnsubRef.current = null; }
-        lastUserId.current = null;
       }
+      teardownListeners();
+      lastUserId.current = null;
       return;
     }
 
     if (lastUserId.current === user.id) return;
     lastUserId.current = user.id;
+
+    // Cancellation guard: flipped true when this effect is torn down (logout,
+    // role change, remount). Pending async permission callbacks check it so a
+    // late "OK" tap can never (re)start tracking AFTER the user is gone.
+    let cancelled = false;
 
     // Tag current user for queue attribution; clears a previous different user's queued pings
     setCurrentUserId(user.id).catch(() => {});
@@ -171,6 +187,7 @@ function LocationTracker() {
     // One-time explanation before requesting background permission
     AsyncStorage.getItem(BG_PERM_SHOWN_KEY)
       .then((shown) => {
+        if (cancelled) return;
         if (!shown) {
           Alert.alert(
             "Background Location",
@@ -179,6 +196,7 @@ function LocationTracker() {
               text: "OK",
               onPress: () => {
                 AsyncStorage.setItem(BG_PERM_SHOWN_KEY, "1").catch(() => {});
+                if (cancelled) return;
                 startAlwaysOnTracking().catch(() => {});
                 showBatteryOptPromptOnce();
               },
@@ -190,6 +208,7 @@ function LocationTracker() {
         }
       })
       .catch(() => {
+        if (cancelled) return;
         startAlwaysOnTracking().catch(() => {});
         showBatteryOptPromptOnce();
       });
@@ -223,15 +242,18 @@ function LocationTracker() {
       // NetInfo unavailable — AppState-based flush still active
     }
 
+    // Cleanup: ONLY tear down the JS listeners we created. We deliberately do
+    // NOT stop the native location service here. React unmounts/remounts this
+    // tree whenever the OS recreates the activity (app backgrounded, low memory,
+    // config change) — calling stopAlwaysOnTracking() from cleanup is exactly
+    // what silently killed background tracking after a few hours. The service is
+    // stopped only by an explicit logout (AuthContext.logout) or a confirmed
+    // role change to a non-technician.
     return () => {
-      if (pingIntervalRef.current) { clearInterval(pingIntervalRef.current); pingIntervalRef.current = null; }
-      if (appStateUnsubRef.current) { appStateUnsubRef.current(); appStateUnsubRef.current = null; }
-      if (netInfoUnsubRef.current) { netInfoUnsubRef.current(); netInfoUnsubRef.current = null; }
-      lastUserId.current = null;
-      stopAlwaysOnTracking().catch(() => {});
-      clearCurrentUserId().catch(() => {});
+      cancelled = true;
+      teardownListeners();
     };
-  }, [user?.id, user?.role]);
+  }, [user?.id, user?.role, isLoading]);
 
   return null;
 }

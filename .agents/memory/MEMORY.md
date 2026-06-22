@@ -1,6 +1,1 @@
-- [pnpm + Expo babel-preset-expo](pnpm-expo-babel-preset.md) — must be an explicit devDependency in the Expo app; transitive-only breaks Metro/Expo Go/EAS under strict pnpm.
-- [Drizzle push/migrate drift](drizzle-push-migrate-drift.md) — migrations that formalize push-created tables must be idempotent (IF NOT EXISTS + guarded constraints) or startup migration fails.
-- [EAS build git block](eas-build-git-block.md) — run `eas build` with `EAS_NO_VCS=1` (+ `--no-wait`); the sandbox blocks the git ops EAS uses to archive the project.
-- [pnpm deploy babel non-determinism](pnpm-deploy-babel-nondeterminism.md) — intermittent `Cannot find module '@babel/...'` in Expo prod build; fix via pnpm `packageExtensions`, not app devDep.
-- [Base64 photo upload body limit](base64-photo-limit.md) — sending photos as base64 in JSON body hits Express 100kb default; must set limit:"25mb".
-- [Always-on location architecture](always-on-location.md) — always-on tracking uses new `technician_location_history` table + `/technician-locations/ping` endpoint (no attendanceId); offline queue in AsyncStorage; background task pings every 5 min, foreground every 30s.
+- [Always-on location tracking](android-always-on-location.md) — never stop a foreground location service from React cleanup or transient null-user; stop only on explicit logout.

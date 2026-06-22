@@ -1,8 +1,9 @@
 import { setAuthTokenGetter } from "@workspace/api-client-react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Platform } from "react-native";
-import { mirrorAuthToken } from "../backgroundLocationTask";
+import { clearCurrentUserId, mirrorAuthToken, stopAlwaysOnTracking } from "../backgroundLocationTask";
 
 export interface UpdateProfileData {
   name: string;
@@ -15,6 +16,27 @@ export interface UpdateProfileData {
 }
 
 const TOKEN_KEY = "ks_solar_token";
+// Last-known profile cached on disk. Lets a logged-in user (especially a
+// technician whose background tracking must keep running) stay signed in across
+// app restarts and network blips, instead of being logged out the moment
+// /auth/me can't be reached.
+const USER_CACHE_KEY = "ks_solar_user_cache";
+
+async function cacheUser(u: UserProfile | null): Promise<void> {
+  try {
+    if (u) await AsyncStorage.setItem(USER_CACHE_KEY, JSON.stringify(u));
+    else await AsyncStorage.removeItem(USER_CACHE_KEY);
+  } catch {}
+}
+
+async function loadCachedUser(): Promise<UserProfile | null> {
+  try {
+    const raw = await AsyncStorage.getItem(USER_CACHE_KEY);
+    return raw ? (JSON.parse(raw) as UserProfile) : null;
+  } catch {
+    return null;
+  }
+}
 
 export interface UserProfile {
   id: string;
@@ -132,29 +154,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    loadToken().then((t) => {
+    loadToken().then(async (t) => {
       setToken(t);
-      if (t) {
-        setAuthTokenGetter(() => t);
-        fetch(`${BASE}/auth/me`, {
+      if (!t) {
+        setIsLoading(false);
+        return;
+      }
+      setAuthTokenGetter(() => t);
+
+      // Optimistically restore the last-known profile so a logged-in user stays
+      // signed in (and a technician's tracking keeps running) before /auth/me
+      // responds — and even if it never does because the network is down.
+      const cached = await loadCachedUser();
+      if (cached) {
+        setUser(cached);
+        setIsLoading(false);
+      }
+
+      // Validate the token in the background. ONLY a definitive auth rejection
+      // (401/403) logs the user out. A network error, timeout, or 5xx must NOT —
+      // otherwise a technician in a low-signal area gets logged out and their
+      // background location tracking dies with the wiped token.
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15_000);
+      try {
+        const r = await fetch(`${BASE}/auth/me`, {
           headers: { Authorization: `Bearer ${t}` },
-        })
-          .then((r) => (r.ok ? parseJsonSafe(r) : null))
-          .then((u) => {
-            if (u) setUser(u as UserProfile);
-            else {
-              setToken(null);
-              setAuthTokenGetter(null);
-              storeToken(null);
-            }
-          })
-          .catch(() => {
-            setToken(null);
-            setAuthTokenGetter(null);
-            storeToken(null);
-          })
-          .finally(() => setIsLoading(false));
-      } else {
+          signal: controller.signal,
+        });
+        if (r.ok) {
+          const u = await parseJsonSafe(r);
+          if (u) {
+            setUser(u as UserProfile);
+            cacheUser(u as UserProfile);
+          }
+        } else if (r.status === 401 || r.status === 403) {
+          // Token was revoked / definitively rejected → force a FULL logout,
+          // including stopping background tracking. LocationTracker never stops
+          // on user=null, so we must stop the native service here explicitly,
+          // otherwise a deauthorized device would keep reporting location.
+          await stopAlwaysOnTracking();
+          await clearCurrentUserId();
+          setToken(null);
+          setUser(null);
+          setAuthTokenGetter(null);
+          await storeToken(null);
+          await cacheUser(null);
+        }
+        // Other statuses (5xx etc.): keep token + cached user, retry next launch.
+      } catch {
+        // Network error / timeout: keep token + cached user — do not log out.
+      } finally {
+        clearTimeout(timer);
         setIsLoading(false);
       }
     });
@@ -169,6 +220,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(t);
     setUser(u);
     setAuthTokenGetter(() => t);
+    cacheUser(u);
   }, []);
 
   const loginWithToken = useCallback(async (t: string, u: UserProfile) => {
@@ -176,6 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(t);
     setUser(u);
     setAuthTokenGetter(() => t);
+    cacheUser(u);
   }, []);
 
   // Returns true if account is pending approval (don't log in)
@@ -200,12 +253,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setToken(result.token);
       setUser(result.user);
       setAuthTokenGetter(() => result.token!);
+      cacheUser(result.user);
     }
     return false;
   }, []);
 
   const logout = useCallback(async () => {
+    // Explicit logout is the ONLY place that stops always-on background tracking.
+    // (React lifecycle / transient null users must never stop it.)
+    await stopAlwaysOnTracking();
+    await clearCurrentUserId();
     await storeToken(null);
+    await cacheUser(null);
     setToken(null);
     setUser(null);
     setAuthTokenGetter(null);
@@ -232,6 +291,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!res.ok) throw new Error(json?.error ?? "Update failed");
     if (json == null) throw new Error("The server returned an unexpected response. Please try again.");
     setUser(json as UserProfile);
+    cacheUser(json as UserProfile);
   }, [token]);
 
   const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {

@@ -11,6 +11,36 @@ const USER_ID_KEY = "ks_solar_user_id";
 const OFFLINE_QUEUE_KEY = "ks_solar_location_queue";
 const MAX_QUEUE_SIZE = 2000;
 
+const CONFIG_VERSION_KEY = "ks_solar_tracking_config_version";
+// Bump whenever the startLocationUpdatesAsync() options below change. An already
+// registered Expo location task keeps its ORIGINAL persisted options forever
+// (hasStartedLocationUpdatesAsync short-circuits a re-start), so without a
+// version restart, updated options never reach devices that upgraded the app.
+const TRACKING_CONFIG_VERSION = "2";
+
+const PING_TIMEOUT_MS = 10_000;
+
+/**
+ * fetch() with a hard timeout. A hung request inside the headless background
+ * task is the silent killer of always-on tracking: with no timeout a single
+ * stalled socket (common on flaky mobile networks) wedges the headless JS
+ * runtime, Android stops scheduling the task, and the foreground service can be
+ * reaped with it. AbortController guarantees every request settles.
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 interface QueuedPing {
   userId: string;
   latitude: string;
@@ -164,18 +194,22 @@ export async function flushOfflineQueue(): Promise<void> {
       try {
         const results = await Promise.all(
           batch.map(async (ping) => {
-            const resp = await fetch(`${apiBase}/technician-locations/ping`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
+            const resp = await fetchWithTimeout(
+              `${apiBase}/technician-locations/ping`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  latitude: ping.latitude,
+                  longitude: ping.longitude,
+                  recordedAt: ping.recordedAt,
+                }),
               },
-              body: JSON.stringify({
-                latitude: ping.latitude,
-                longitude: ping.longitude,
-                recordedAt: ping.recordedAt,
-              }),
-            });
+              PING_TIMEOUT_MS
+            );
             return { ping, ok: resp.ok };
           })
         );
@@ -199,19 +233,30 @@ async function sendPingNow(
 ): Promise<boolean> {
   try {
     const apiBase = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
-    const resp = await fetch(`${apiBase}/technician-locations/ping`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+    const resp = await fetchWithTimeout(
+      `${apiBase}/technician-locations/ping`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ latitude, longitude, recordedAt }),
       },
-      body: JSON.stringify({ latitude, longitude, recordedAt }),
-    });
+      PING_TIMEOUT_MS
+    );
     return resp.ok;
   } catch {
     return false;
   }
 }
+
+// Guards against overlapping headless invocations. The location task can fire
+// again before the previous network send finished; without this, slow networks
+// pile up concurrent fetches inside the headless runtime. This module-level flag
+// survives across invocations because Expo keeps one JS runtime alive for the
+// foreground service.
+let backgroundTaskBusy = false;
 
 if (Platform.OS !== "web") {
   try {
@@ -228,7 +273,8 @@ if (Platform.OS !== "web") {
       }) => {
         if (error) return;
         const { locations } = data as { locations: Location.LocationObject[] };
-        const loc = locations[0];
+        // Use the most recent fix if Android batched several together.
+        const loc = locations[locations.length - 1];
         if (!loc) return;
 
         const latitude = loc.coords.latitude.toString();
@@ -242,9 +288,18 @@ if (Platform.OS !== "web") {
           return;
         }
 
-        // Keep the background task minimal — just send this one ping.
-        // Queue flushing happens in the foreground (AppState + NetInfo listeners)
-        // to avoid long-running async chains that cause task timeouts.
+        // If a previous send is still in flight, just persist this fix and bail —
+        // never let headless invocations overlap. The foreground flush will pick
+        // up the queued fix later.
+        if (backgroundTaskBusy) {
+          await enqueuePing(userId, latitude, longitude, recordedAt);
+          return;
+        }
+
+        // Keep the background task minimal — send one ping (bounded by a timeout),
+        // else enqueue. Queue flushing happens in the foreground (AppState +
+        // NetInfo listeners) to avoid long-running async chains in the headless task.
+        backgroundTaskBusy = true;
         try {
           const ok = await sendPingNow(token, latitude, longitude, recordedAt);
           if (!ok) {
@@ -252,6 +307,8 @@ if (Platform.OS !== "web") {
           }
         } catch {
           await enqueuePing(userId, latitude, longitude, recordedAt);
+        } finally {
+          backgroundTaskBusy = false;
         }
       }
     );
@@ -268,7 +325,20 @@ export async function startAlwaysOnTracking(): Promise<void> {
     const bgStatus = await Location.requestBackgroundPermissionsAsync();
     if (bgStatus.status !== "granted") return;
     const already = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-    if (!already) {
+    const storedVersion = await AsyncStorage.getItem(CONFIG_VERSION_KEY).catch(
+      () => null
+    );
+
+    // Force a one-time restart when tracking options change between app versions.
+    // hasStartedLocationUpdatesAsync() otherwise keeps the old persisted options.
+    if (already && storedVersion !== TRACKING_CONFIG_VERSION) {
+      try {
+        await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+      } catch {}
+    }
+
+    const needStart = !already || storedVersion !== TRACKING_CONFIG_VERSION;
+    if (needStart) {
       await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
         accuracy: Location.Accuracy.Balanced,
         timeInterval: 60_000,
@@ -283,6 +353,10 @@ export async function startAlwaysOnTracking(): Promise<void> {
         pausesUpdatesAutomatically: false,
         showsBackgroundLocationIndicator: true,
       });
+      await AsyncStorage.setItem(
+        CONFIG_VERSION_KEY,
+        TRACKING_CONFIG_VERSION
+      ).catch(() => {});
     }
     // Write flag so KSSolarBootReceiver can restart the service after a reboot.
     await setTrackingFlag(true);
