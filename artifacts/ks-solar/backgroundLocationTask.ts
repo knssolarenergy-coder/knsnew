@@ -269,7 +269,7 @@ export async function startAlwaysOnTracking(): Promise<void> {
     if (!already) {
       await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
         accuracy: Location.Accuracy.Balanced,
-        timeInterval: 300_000,
+        timeInterval: 60_000,
         distanceInterval: 0,
         activityType: Location.ActivityType.Other,
         foregroundService: {

@@ -14,7 +14,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { Alert, Platform } from "react-native";
+import { Alert, Linking, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -63,6 +63,30 @@ const queryClient = new QueryClient({
 const API_BASE = `${_apiOrigin}/api`;
 
 const BG_PERM_SHOWN_KEY = "ks_solar_bg_perm_shown";
+const BATTERY_OPT_KEY   = "ks_solar_battery_opt_prompted";
+
+function showBatteryOptPromptOnce() {
+  if (Platform.OS !== "android") return;
+  AsyncStorage.getItem(BATTERY_OPT_KEY).then((shown) => {
+    if (shown) return;
+    AsyncStorage.setItem(BATTERY_OPT_KEY, "1").catch(() => {});
+    Alert.alert(
+      "Tracking Reliable Banao",
+      "Kuch Android phones (Xiaomi, Huawei, Samsung) screen off hone par background apps ko band kar dete hain, jis se location tracking ruk sakti hai.\n\nReliable tracking ke liye K&S Solar ko Battery Optimization se exempt karo:\n\nSettings → Apps → K&S Solar → Battery → Unrestricted",
+      [
+        { text: "Baad Mein", style: "cancel" },
+        {
+          text: "Settings Kholein",
+          onPress: () => {
+            Linking.sendIntent(
+              "android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS"
+            ).catch(() => Linking.openSettings().catch(() => {}));
+          },
+        },
+      ]
+    );
+  }).catch(() => {});
+}
 
 function compareVersions(a: string, b: string): number {
   const pa = a.split(".").map(Number);
@@ -159,14 +183,19 @@ function LocationTracker() {
               onPress: () => {
                 AsyncStorage.setItem(BG_PERM_SHOWN_KEY, "1").catch(() => {});
                 startAlwaysOnTracking().catch(() => {});
+                showBatteryOptPromptOnce();
               },
             }]
           );
         } else {
           startAlwaysOnTracking().catch(() => {});
+          showBatteryOptPromptOnce();
         }
       })
-      .catch(() => { startAlwaysOnTracking().catch(() => {}); });
+      .catch(() => {
+        startAlwaysOnTracking().catch(() => {});
+        showBatteryOptPromptOnce();
+      });
 
     flushOfflineQueue().catch(() => {});
     sendForegroundPing().catch(() => {});
