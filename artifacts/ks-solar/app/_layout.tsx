@@ -26,13 +26,11 @@ import { useRouter } from "expo-router";
 import {
   clearCurrentUserId,
   flushOfflineQueue,
-  registerBackgroundFetchPing,
   sendForegroundPing,
   setCurrentUserId,
   startAlwaysOnTracking,
   startAppStateFlushListener,
   stopAlwaysOnTracking,
-  unregisterBackgroundFetchPing,
 } from "@/backgroundLocationTask";
 
 // Register background location task at app startup — wrapped in try/catch so any
@@ -155,7 +153,6 @@ function LocationTracker() {
     if (!user || user.role !== "technician") {
       if (lastUserId.current) {
         stopAlwaysOnTracking().catch(() => {});
-        unregisterBackgroundFetchPing().catch(() => {});
         clearCurrentUserId().catch(() => {});
         if (pingIntervalRef.current) { clearInterval(pingIntervalRef.current); pingIntervalRef.current = null; }
         if (appStateUnsubRef.current) { appStateUnsubRef.current(); appStateUnsubRef.current = null; }
@@ -182,18 +179,18 @@ function LocationTracker() {
               text: "OK",
               onPress: () => {
                 AsyncStorage.setItem(BG_PERM_SHOWN_KEY, "1").catch(() => {});
-                startAlwaysOnTracking().then(() => registerBackgroundFetchPing()).catch(() => {});
+                startAlwaysOnTracking().catch(() => {});
                 showBatteryOptPromptOnce();
               },
             }]
           );
         } else {
-          startAlwaysOnTracking().then(() => registerBackgroundFetchPing()).catch(() => {});
+          startAlwaysOnTracking().catch(() => {});
           showBatteryOptPromptOnce();
         }
       })
       .catch(() => {
-        startAlwaysOnTracking().then(() => registerBackgroundFetchPing()).catch(() => {});
+        startAlwaysOnTracking().catch(() => {});
         showBatteryOptPromptOnce();
       });
 
@@ -232,7 +229,6 @@ function LocationTracker() {
       if (netInfoUnsubRef.current) { netInfoUnsubRef.current(); netInfoUnsubRef.current = null; }
       lastUserId.current = null;
       stopAlwaysOnTracking().catch(() => {});
-      unregisterBackgroundFetchPing().catch(() => {});
       clearCurrentUserId().catch(() => {});
     };
   }, [user?.id, user?.role]);
