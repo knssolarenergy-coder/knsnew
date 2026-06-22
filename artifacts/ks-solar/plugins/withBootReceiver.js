@@ -135,8 +135,36 @@ function withBootReceiverJavaSource(config) {
   ]);
 }
 
+/**
+ * Expo Location's LocationTaskService does not explicitly set
+ * android:stopWithTask="false" in its manifest entry, which means on some
+ * OEM Android builds (MIUI, EMUI, Samsung) the OS kills the service when
+ * the user swipes the app away from the recent tasks screen.
+ *
+ * This modifier explicitly sets stopWithTask="false" so the foreground
+ * service survives app task removal — independent of battery optimization.
+ */
+function withLocationServiceSticky(config) {
+  return withAndroidManifest(config, (cfg) => {
+    const app = cfg.modResults.manifest.application[0];
+    if (!app.service) return cfg;
+
+    const locSvc = app.service.find(
+      (s) =>
+        s.$?.["android:name"] ===
+        "expo.modules.location.services.LocationTaskService",
+    );
+    if (locSvc) {
+      locSvc.$["android:stopWithTask"] = "false";
+      locSvc.$["android:exported"] = "false";
+    }
+    return cfg;
+  });
+}
+
 module.exports = function withBootReceiver(config) {
   config = withBootReceiverManifest(config);
   config = withBootReceiverJavaSource(config);
+  config = withLocationServiceSticky(config);
   return config;
 };
