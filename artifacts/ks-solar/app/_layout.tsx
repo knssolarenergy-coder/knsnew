@@ -62,26 +62,81 @@ const queryClient = new QueryClient({
 const API_BASE = `${_apiOrigin}/api`;
 
 const BG_PERM_SHOWN_KEY = "ks_solar_bg_perm_shown";
-// v2 key — forces re-prompt for users who saw the old (less informative) prompt
-const BATTERY_OPT_KEY   = "ks_solar_battery_opt_v2";
+// v3 — previous versions only opened generic Settings with text instructions, so
+// most technicians never actually whitelisted the app and Doze/OEM battery
+// managers kept killing the location service. v3 fires the REAL one-tap "ignore
+// battery optimizations" system dialog and KEEPS re-prompting (max once / 24h)
+// until the technician confirms they've configured it.
+const BATTERY_OPT_DONE_KEY = "ks_solar_battery_opt_v3_done";
+const BATTERY_OPT_LAST_KEY = "ks_solar_battery_opt_v3_last";
+const BATTERY_REPROMPT_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Fires Android's one-tap "Allow / ignore battery optimizations" dialog.
+ * Without this exemption, OEM battery managers (Xiaomi, Oppo, Vivo, Samsung) and
+ * Doze freeze or kill the location foreground service once the app is
+ * backgrounded — the #1 reason tracking "stops when the app is closed". Falls
+ * back to the battery-optimization list, then generic app settings.
+ */
+async function openBatteryExemption(): Promise<void> {
+  if (Platform.OS !== "android") return;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const IntentLauncher = (() => {
+    try {
+      return require("expo-intent-launcher") as typeof import("expo-intent-launcher");
+    } catch {
+      return null;
+    }
+  })();
+  if (!IntentLauncher) {
+    Linking.openSettings().catch(() => {});
+    return;
+  }
+  try {
+    await IntentLauncher.startActivityAsync(
+      "android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+      { data: "package:com.kssolar.app" }
+    );
+  } catch {
+    try {
+      await IntentLauncher.startActivityAsync(
+        "android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS"
+      );
+    } catch {
+      Linking.openSettings().catch(() => {});
+    }
+  }
+}
 
 function showBatteryOptPromptOnce() {
   if (Platform.OS !== "android") return;
-  AsyncStorage.getItem(BATTERY_OPT_KEY).then((shown) => {
-    if (shown) return;
-    AsyncStorage.setItem(BATTERY_OPT_KEY, "1").catch(() => {});
-    Alert.alert(
-      "Location Tracking — 2 Zaruri Settings",
-      "App close hone par bhi tracking chalti rahe, is ke liye yeh karo:\n\n1️⃣  Battery → \"Koi Paabandi Nahi\" (No Restrictions)\n2️⃣  Autostart → ON karo (Xiaomi/MIUI/Samsung mein)\n\nNeeche Settings dabao → K&S Solar dhoondo → dono options lagao.",
-      [
-        { text: "Baad Mein", style: "cancel" },
-        {
-          text: "Settings Kholein",
-          onPress: () => Linking.openSettings().catch(() => {}),
-        },
-      ]
-    );
-  }).catch(() => {});
+  (async () => {
+    try {
+      const done = await AsyncStorage.getItem(BATTERY_OPT_DONE_KEY);
+      if (done) return;
+      const last = await AsyncStorage.getItem(BATTERY_OPT_LAST_KEY);
+      if (last && Date.now() - Number(last) < BATTERY_REPROMPT_MS) return;
+      await AsyncStorage.setItem(BATTERY_OPT_LAST_KEY, String(Date.now())).catch(
+        () => {}
+      );
+      Alert.alert(
+        "Zaroori: Tracking 24/7 chalti rahe",
+        'App band ya phone lock hone par bhi location chalti rahe, is ke liye 2 settings on karein:\n\n1\u20e3  "Battery Allow" dabayein, phir system dialog par "Allow" — battery optimization se app exempt ho jayegi.\n2\u20e3  "Autostart" se settings khol kar app ka Autostart ON karein (Xiaomi/Oppo/Vivo/Samsung).\n\nJab dono ho jayein to "Ho gaya" dabayein.',
+        [
+          { text: "Battery Allow", onPress: () => openBatteryExemption() },
+          {
+            text: "Autostart",
+            onPress: () => Linking.openSettings().catch(() => {}),
+          },
+          {
+            text: "Ho gaya \u2713",
+            onPress: () =>
+              AsyncStorage.setItem(BATTERY_OPT_DONE_KEY, "1").catch(() => {}),
+          },
+        ]
+      );
+    } catch {}
+  })();
 }
 
 function compareVersions(a: string, b: string): number {

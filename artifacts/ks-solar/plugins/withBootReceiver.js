@@ -146,6 +146,10 @@ function withLocationServiceSticky(config) {
     if (locSvc) {
       locSvc.$["android:stopWithTask"] = "false";
       locSvc.$["android:exported"] = "false";
+      // Explicitly declare the FGS type so Android 14+ keeps the service alive
+      // as a location foreground service even if expo-location's own manifest
+      // entry omits it on some toolchains.
+      locSvc.$["android:foregroundServiceType"] = "location";
     }
     return cfg;
   });
