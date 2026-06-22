@@ -26,11 +26,13 @@ import { useRouter } from "expo-router";
 import {
   clearCurrentUserId,
   flushOfflineQueue,
+  registerBackgroundFetchPing,
   sendForegroundPing,
   setCurrentUserId,
   startAlwaysOnTracking,
   startAppStateFlushListener,
   stopAlwaysOnTracking,
+  unregisterBackgroundFetchPing,
 } from "@/backgroundLocationTask";
 
 // Register background location task at app startup — wrapped in try/catch so any
@@ -63,7 +65,8 @@ const queryClient = new QueryClient({
 const API_BASE = `${_apiOrigin}/api`;
 
 const BG_PERM_SHOWN_KEY = "ks_solar_bg_perm_shown";
-const BATTERY_OPT_KEY   = "ks_solar_battery_opt_prompted";
+// v2 key — forces re-prompt for users who saw the old (less informative) prompt
+const BATTERY_OPT_KEY   = "ks_solar_battery_opt_v2";
 
 function showBatteryOptPromptOnce() {
   if (Platform.OS !== "android") return;
@@ -71,17 +74,13 @@ function showBatteryOptPromptOnce() {
     if (shown) return;
     AsyncStorage.setItem(BATTERY_OPT_KEY, "1").catch(() => {});
     Alert.alert(
-      "Tracking Reliable Banao",
-      "Kuch Android phones (Xiaomi, Huawei, Samsung) screen off hone par background apps ko band kar dete hain, jis se location tracking ruk sakti hai.\n\nReliable tracking ke liye K&S Solar ko Battery Optimization se exempt karo:\n\nSettings → Apps → K&S Solar → Battery → Unrestricted",
+      "Location Tracking — 2 Zaruri Settings",
+      "App close hone par bhi tracking chalti rahe, is ke liye yeh karo:\n\n1️⃣  Battery → \"Koi Paabandi Nahi\" (No Restrictions)\n2️⃣  Autostart → ON karo (Xiaomi/MIUI/Samsung mein)\n\nNeeche Settings dabao → K&S Solar dhoondo → dono options lagao.",
       [
         { text: "Baad Mein", style: "cancel" },
         {
           text: "Settings Kholein",
-          onPress: () => {
-            Linking.sendIntent(
-              "android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS"
-            ).catch(() => Linking.openSettings().catch(() => {}));
-          },
+          onPress: () => Linking.openSettings().catch(() => {}),
         },
       ]
     );
@@ -156,6 +155,7 @@ function LocationTracker() {
     if (!user || user.role !== "technician") {
       if (lastUserId.current) {
         stopAlwaysOnTracking().catch(() => {});
+        unregisterBackgroundFetchPing().catch(() => {});
         clearCurrentUserId().catch(() => {});
         if (pingIntervalRef.current) { clearInterval(pingIntervalRef.current); pingIntervalRef.current = null; }
         if (appStateUnsubRef.current) { appStateUnsubRef.current(); appStateUnsubRef.current = null; }
@@ -182,18 +182,18 @@ function LocationTracker() {
               text: "OK",
               onPress: () => {
                 AsyncStorage.setItem(BG_PERM_SHOWN_KEY, "1").catch(() => {});
-                startAlwaysOnTracking().catch(() => {});
+                startAlwaysOnTracking().then(() => registerBackgroundFetchPing()).catch(() => {});
                 showBatteryOptPromptOnce();
               },
             }]
           );
         } else {
-          startAlwaysOnTracking().catch(() => {});
+          startAlwaysOnTracking().then(() => registerBackgroundFetchPing()).catch(() => {});
           showBatteryOptPromptOnce();
         }
       })
       .catch(() => {
-        startAlwaysOnTracking().catch(() => {});
+        startAlwaysOnTracking().then(() => registerBackgroundFetchPing()).catch(() => {});
         showBatteryOptPromptOnce();
       });
 
@@ -232,6 +232,7 @@ function LocationTracker() {
       if (netInfoUnsubRef.current) { netInfoUnsubRef.current(); netInfoUnsubRef.current = null; }
       lastUserId.current = null;
       stopAlwaysOnTracking().catch(() => {});
+      unregisterBackgroundFetchPing().catch(() => {});
       clearCurrentUserId().catch(() => {});
     };
   }, [user?.id, user?.role]);

@@ -213,6 +213,80 @@ async function sendPingNow(
   }
 }
 
+export const BG_FETCH_TASK_NAME = "ks-solar-bg-fetch";
+
+if (Platform.OS !== "web") {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const TaskManager = require("expo-task-manager") as typeof import("expo-task-manager");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const BackgroundFetch = require("expo-background-fetch") as typeof import("expo-background-fetch");
+
+    /**
+     * WorkManager backup task — runs every ~15 min even when the app is fully
+     * closed. Uses the last known position (no GPS wake-up) so it's cheap.
+     * Acts as a safety net if LocationTaskService is killed by an aggressive OEM.
+     */
+    TaskManager.defineTask(BG_FETCH_TASK_NAME, async () => {
+      try {
+        const token = await SecureStore.getItemAsync(TOKEN_KEY).catch(() => null);
+        const userId = await SecureStore.getItemAsync(USER_ID_KEY).catch(() => null);
+        if (!token || !userId) return BackgroundFetch.BackgroundFetchResult.NoData;
+
+        const loc = await Location.getLastKnownPositionAsync({
+          maxAge: 10 * 60 * 1000,
+          requiredAccuracy: 500,
+        }).catch(() => null);
+        if (!loc) return BackgroundFetch.BackgroundFetchResult.NoData;
+
+        const latitude = loc.coords.latitude.toString();
+        const longitude = loc.coords.longitude.toString();
+        const recordedAt = new Date().toISOString();
+
+        await flushOfflineQueue();
+        const ok = await sendPingNow(token, latitude, longitude, recordedAt);
+        if (!ok) await enqueuePing(userId, latitude, longitude, recordedAt);
+
+        return BackgroundFetch.BackgroundFetchResult.NewData;
+      } catch {
+        return BackgroundFetch.BackgroundFetchResult.Failed;
+      }
+    });
+  } catch {
+    // expo-background-fetch unavailable
+  }
+}
+
+export async function registerBackgroundFetchPing(): Promise<void> {
+  if (Platform.OS !== "android") return;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const BackgroundFetch = require("expo-background-fetch") as typeof import("expo-background-fetch");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const TaskManager = require("expo-task-manager") as typeof import("expo-task-manager");
+    const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_FETCH_TASK_NAME);
+    if (!isRegistered) {
+      await BackgroundFetch.registerTaskAsync(BG_FETCH_TASK_NAME, {
+        minimumInterval: 15 * 60,
+        stopOnTerminate: false,
+        startOnBoot: true,
+      });
+    }
+  } catch {}
+}
+
+export async function unregisterBackgroundFetchPing(): Promise<void> {
+  if (Platform.OS !== "android") return;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const BackgroundFetch = require("expo-background-fetch") as typeof import("expo-background-fetch");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const TaskManager = require("expo-task-manager") as typeof import("expo-task-manager");
+    const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_FETCH_TASK_NAME);
+    if (isRegistered) await BackgroundFetch.unregisterTaskAsync(BG_FETCH_TASK_NAME);
+  } catch {}
+}
+
 if (Platform.OS !== "web") {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
